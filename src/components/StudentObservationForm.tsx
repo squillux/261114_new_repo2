@@ -268,7 +268,8 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
     const nextErrors: Record<string, string> = {};
 
     if (!form.classInfo.trim()) {
-      nextErrors.classInfo = '학반·번호를 입력해 주세요. (예: 1학년 2반 5번)';
+      nextErrors.classInfo =
+        '학번을 입력해 주세요. (예: 1학년 1반 1번 -> 10101)';
     }
 
     if (!form.authorName.trim()) {
@@ -368,7 +369,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
             개인 관찰 일지 작성하기
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            내 학반·이름과 소속 모둠을 적고, 발견한 에너지 낭비 공간의 사진과
+            내 학번·이름과 소속 모둠을 적고, 발견한 에너지 낭비 공간의 사진과
             내용을 기록하세요.
           </p>
         </div>
@@ -381,11 +382,12 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                 htmlFor="class-info"
                 className="block text-sm font-semibold text-slate-900"
               >
-                학반 · 번호
+                학번
               </label>
               <input
                 id="class-info"
                 type="text"
+                inputMode="numeric"
                 value={form.classInfo}
                 onChange={(e) => {
                   setForm({ ...form, classInfo: e.target.value });
@@ -393,7 +395,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                     setErrors((prev) => ({ ...prev, classInfo: '' }));
                   }
                 }}
-                placeholder="예: 1학년 2반 5번"
+                placeholder="예: 1학년 1반 1번 -> 10101"
                 maxLength={40}
                 className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
               />

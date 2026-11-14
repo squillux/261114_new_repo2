@@ -1,18 +1,23 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
   Camera,
   Check,
   Clock,
+  KeyRound,
   Lightbulb,
+  Lock,
+  Maximize2,
   Send,
   Trash2,
+  Unlock,
   Users,
   X,
 } from 'lucide-react';
 import {
   GROUP_NAME_PRESETS,
+  type GroupAuthCode,
   type GroupTopicInput,
   type GroupTopicRecord,
   type ObservationRecord,
@@ -21,6 +26,7 @@ import {
 import { compressImageFile } from '../lib/imageUtils';
 import {
   submitGroupTopic,
+  verifyGroupAuthAndFetchObservations,
   type ApiSubmitTopicResult,
 } from '../lib/observationApi';
 import { StorageStatusNotice } from './StorageStatusNotice';
@@ -28,12 +34,14 @@ import { StorageStatusNotice } from './StorageStatusNotice';
 interface GroupTopicSelectionViewProps {
   observations: ObservationRecord[];
   topics: GroupTopicRecord[];
+  groupCodes: GroupAuthCode[];
   storageStatus: StorageConnectionStatus;
   isCheckingStorage: boolean;
   onRetryConnection: () => void;
   onTopicSubmitted: (result: ApiSubmitTopicResult) => void;
   onDeletePreviewTopic: (id: string) => void;
   onGoToTeacherView: () => void;
+  onGoToTeacherCodes: () => void;
 }
 
 const INITIAL_TOPIC_FORM: GroupTopicInput = {
@@ -51,15 +59,34 @@ const INITIAL_TOPIC_FORM: GroupTopicInput = {
 export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = ({
   observations,
   topics,
+  groupCodes,
   storageStatus,
   isCheckingStorage,
   onRetryConnection,
   onTopicSubmitted,
   onDeletePreviewTopic,
   onGoToTeacherView,
+  onGoToTeacherCodes,
 }) => {
+  // 상단 구역: 모둠 인증코드 확인 상태
+  const [authGroupPreset, setAuthGroupPreset] = useState<string>('1모둠');
+  const [authGroupName, setAuthGroupName] = useState<string>('1모둠');
+  const [authCodeInput, setAuthCodeInput] = useState<string>('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState<string>('');
+  const [unlockedGroup, setUnlockedGroup] = useState<string | null>(null);
+  const [verifiedObservations, setVerifiedObservations] = useState<
+    ObservationRecord[]
+  >([]);
+  const [verifyNotice, setVerifyNotice] = useState<string>('');
+  const [enlargedPhoto, setEnlargedPhoto] = useState<{
+    src: string;
+    title: string;
+  } | null>(null);
+
+  // 하단 구역: 최종 모둠 프로젝트 주제 선정 일지 폼 상태
   const [form, setForm] = useState<GroupTopicInput>(INITIAL_TOPIC_FORM);
-  const [groupPreset, setGroupPreset] = useState<string>('1모둠');
+  const [formGroupPreset, setFormGroupPreset] = useState<string>('1모둠');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [photoError, setPhotoError] = useState('');
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
@@ -68,17 +95,79 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
     useState<ApiSubmitTopicResult | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const topicFormRef = useRef<HTMLDivElement | null>(null);
 
-  const matchingObservations = useMemo(() => {
-    const targetGroup = form.groupName.trim();
-    if (!targetGroup) return [];
-    return observations.filter(
-      (obs) => obs.groupName.trim() === targetGroup
-    );
-  }, [observations, form.groupName]);
+  const handleAuthGroupPresetSelect = (preset: string) => {
+    setAuthGroupPreset(preset);
+    setVerifyError('');
+    if (preset === '직접 입력') {
+      setAuthGroupName('');
+    } else {
+      setAuthGroupName(preset);
+    }
+  };
 
-  const handleGroupPresetSelect = (preset: string) => {
-    setGroupPreset(preset);
+  const handleVerifySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setVerifyError('');
+    setVerifyNotice('');
+
+    if (!authGroupName.trim()) {
+      setVerifyError('확인할 모둠을 선택하거나 입력해 주세요.');
+      return;
+    }
+    if (!authCodeInput.trim()) {
+      setVerifyError('선생님께 받은 모둠 인증코드를 입력해 주세요.');
+      return;
+    }
+
+    setIsVerifying(true);
+    try {
+      const result = await verifyGroupAuthAndFetchObservations(
+        authGroupName.trim(),
+        authCodeInput.trim(),
+        groupCodes,
+        observations
+      );
+
+      if (!result.verified) {
+        setVerifyError(result.message);
+        return;
+      }
+
+      const targetGroup = authGroupName.trim();
+      setUnlockedGroup(targetGroup);
+      setVerifiedObservations(result.observations);
+      setVerifyNotice(result.message);
+
+      // 하단 최종 주제 폼의 모둠 정보도 자연스럽게 동기화
+      if (
+        (GROUP_NAME_PRESETS as readonly string[]).includes(targetGroup) &&
+        targetGroup !== '직접 입력'
+      ) {
+        setFormGroupPreset(targetGroup);
+      } else {
+        setFormGroupPreset('직접 입력');
+      }
+      setForm((prev) => ({
+        ...prev,
+        groupName: targetGroup,
+      }));
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleLockGroup = () => {
+    setUnlockedGroup(null);
+    setVerifiedObservations([]);
+    setAuthCodeInput('');
+    setVerifyError('');
+    setVerifyNotice('');
+  };
+
+  const handleFormGroupPresetSelect = (preset: string) => {
+    setFormGroupPreset(preset);
     if (preset === '직접 입력') {
       setForm((prev) => ({ ...prev, groupName: '' }));
     } else {
@@ -107,6 +196,8 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
       delete next.selectedLocation;
       return next;
     });
+
+    topicFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -211,6 +302,21 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
 
   return (
     <div className="space-y-6">
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-slate-500">
+          중학교 1학년 정보(기술 융합) · 2단계(2차시) · 핵심 질문 도출 및
+          알고리즘 설계
+        </p>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+          모둠별 프로젝트 주제 선정
+        </h1>
+        <p className="max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
+          먼저 교사에게 받은 모둠별 인증코드를 입력해 1차시에서 모둠원들이
+          제출한 사진과 관찰 일지를 함께 확인한 뒤, 아래에서 우리 모둠의 최종
+          프로젝트 주제 한 가지를 선정해 기록하세요.
+        </p>
+      </div>
+
       <StorageStatusNotice
         status={storageStatus}
         onRetryCheck={onRetryConnection}
@@ -218,142 +324,315 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
         context="student"
       />
 
-      <div className="grid gap-8 lg:grid-cols-12 lg:items-start">
-        {/* 왼쪽: 2차시 안내 및 우리 모둠 1차시 관찰 참고 */}
-        <div className="space-y-6 lg:col-span-5">
-          <section className="space-y-3">
-            <p className="text-xs font-medium text-slate-500">
-              중학교 1학년 정보(기술 융합) · 2단계(2차시) · 핵심 질문 도출 및
-              알고리즘 설계
+      {/* 상단 구역: 모둠 인증코드 입력 및 1차시 개인별 일지 확인 */}
+      <section
+        aria-labelledby="group-verify-title"
+        className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 space-y-5"
+      >
+        <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold text-emerald-800">
+              1단계 · 모둠 인증 후 1차시 개인 일지 확인
             </p>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-              모둠별 프로젝트 주제 선정
-            </h1>
-            <p className="text-sm leading-relaxed text-slate-600 sm:text-base">
-              1차시에서 모둠원이 각자 조사한 관찰 일지와 사진을 모아 비교한
-              뒤, 우리 모둠이 센서와 코딩으로 해결할 단 하나의 최종 프로젝트
-              주제를 정해 기록합니다.
-            </p>
-          </section>
+            <h2
+              id="group-verify-title"
+              className="mt-1 text-lg font-bold text-slate-900 sm:text-xl"
+            >
+              우리 모둠 1차시 관찰 기록·사진 불러오기
+            </h2>
+          </div>
 
+          {unlockedGroup && (
+            <button
+              type="button"
+              onClick={handleLockGroup}
+              className="inline-flex min-h-[42px] items-center justify-center gap-1.5 self-start rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap sm:self-auto"
+            >
+              <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>다른 모둠으로 전환</span>
+            </button>
+          )}
+        </div>
+
+        {!unlockedGroup ? (
+          <form onSubmit={handleVerifySubmit} noValidate className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-900">
+                1. 확인할 모둠 선택
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {GROUP_NAME_PRESETS.map((preset) => {
+                  const selected = authGroupPreset === preset;
+                  return (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => handleAuthGroupPresetSelect(preset)}
+                      aria-pressed={selected}
+                      className={`min-h-[44px] rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
+                        selected
+                          ? 'border-emerald-700 bg-emerald-700 text-white'
+                          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  );
+                })}
+              </div>
+              {authGroupPreset === '직접 입력' && (
+                <input
+                  type="text"
+                  value={authGroupName}
+                  onChange={(e) => {
+                    setAuthGroupName(e.target.value);
+                    setVerifyError('');
+                  }}
+                  placeholder="예: 7모둠"
+                  aria-label="확인할 모둠 이름 직접 입력"
+                  maxLength={30}
+                  className="min-h-[46px] w-full max-w-xs rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                />
+              )}
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1 max-w-sm space-y-1.5">
+                <label
+                  htmlFor="group-auth-code"
+                  className="block text-sm font-semibold text-slate-900"
+                >
+                  2. 교사에게 받은 모둠 인증코드
+                </label>
+                <div className="relative">
+                  <KeyRound
+                    className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                    aria-hidden="true"
+                  />
+                  <input
+                    id="group-auth-code"
+                    type="text"
+                    value={authCodeInput}
+                    onChange={(e) => {
+                      setAuthCodeInput(e.target.value);
+                      setVerifyError('');
+                    }}
+                    placeholder="선생님이 안내한 코드 입력"
+                    maxLength={24}
+                    className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white pl-10 pr-3.5 py-2.5 font-mono text-base text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isVerifying}
+                className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 whitespace-nowrap shrink-0"
+              >
+                <Unlock className="h-4 w-4" aria-hidden="true" />
+                <span>
+                  {isVerifying
+                    ? '확인 중...'
+                    : '모둠 인증하고 1차시 기록 보기'}
+                </span>
+              </button>
+            </div>
+
+            {verifyError && (
+              <div
+                role="alert"
+                className="flex flex-col gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-900 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <p className="font-medium leading-relaxed">{verifyError}</p>
+                {groupCodes.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={onGoToTeacherCodes}
+                    className="inline-flex min-h-[38px] items-center gap-1 self-start rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-900 hover:bg-rose-100/60 whitespace-nowrap shrink-0 sm:self-auto"
+                  >
+                    <span>교사 화면에서 인증코드 만들기</span>
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            <p className="text-xs leading-relaxed text-slate-500">
+              교사가 「교사 확인 → 모둠 인증코드 관리」에서 만든 인증코드를
+              입력하면, 해당 모둠 소속 학생들이 1차시에 제출한 개인별 일지와
+              현장 사진을 이 구역에서 바로 모아볼 수 있습니다.
+            </p>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950">
+              <div className="flex items-center gap-2">
+                <Check
+                  className="h-4 w-4 shrink-0 text-emerald-700"
+                  aria-hidden="true"
+                />
+                <span className="font-semibold">{unlockedGroup} 인증됨</span>
+                <span aria-hidden="true">·</span>
+                <span className="tabular-nums">
+                  1차시 개인 관찰 일지 {verifiedObservations.length}건
+                </span>
+              </div>
+              {verifyNotice && (
+                <span className="text-xs text-emerald-900">{verifyNotice}</span>
+              )}
+            </div>
+
+            {verifiedObservations.length === 0 ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-600">
+                <p className="font-semibold text-slate-900">
+                  {unlockedGroup}의 1차시 개인 관찰 일지가 아직 없습니다
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  1차시 화면에서 소속 모둠을 「{unlockedGroup}」으로 선택해
+                  개인 기록을 작성하면 이곳에 모여 보입니다. 아래에서 직접 공간과
+                  주제를 입력할 수도 있습니다.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {verifiedObservations.map((obs) => {
+                  const displayLocation = obs.locationDetail
+                    ? `${obs.locationCategory === '직접 입력' ? '' : obs.locationCategory + ' · '}${obs.locationDetail}`
+                    : obs.locationCategory;
+
+                  return (
+                    <article
+                      key={obs.id}
+                      className="flex flex-col justify-between rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-500">
+                          <span className="font-semibold text-slate-900">
+                            {obs.classInfo} {obs.authorName}
+                          </span>
+                          <span className="font-medium text-emerald-800">
+                            {displayLocation}
+                          </span>
+                        </div>
+
+                        {obs.photoDataUrl && (
+                          <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white">
+                            <img
+                              src={obs.photoDataUrl}
+                              alt={
+                                obs.photoCaption ||
+                                `${displayLocation} 관찰 사진`
+                              }
+                              referrerPolicy="no-referrer"
+                              className="h-44 w-full object-contain"
+                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEnlargedPhoto({
+                                  src: obs.photoDataUrl,
+                                  title: `${obs.groupName} · ${obs.authorName} (${displayLocation})`,
+                                })
+                              }
+                              className="absolute right-2 bottom-2 inline-flex min-h-[34px] items-center gap-1 rounded-md bg-slate-900/80 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-900"
+                            >
+                              <Maximize2
+                                className="h-3 w-3"
+                                aria-hidden="true"
+                              />
+                              <span>크게</span>
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="space-y-1.5 text-sm">
+                          <p className="text-xs font-semibold text-slate-500">
+                            에너지 낭비 장면
+                          </p>
+                          <p className="leading-relaxed text-slate-900">
+                            {obs.wasteScene}
+                          </p>
+                          <p className="pt-1 text-xs font-semibold text-slate-500">
+                            원인과 불편한 점
+                          </p>
+                          <p className="text-xs leading-relaxed text-slate-700 sm:text-sm">
+                            {obs.wasteCause}
+                          </p>
+                          {obs.sensorIdea && (
+                            <p className="pt-1 text-xs text-slate-600">
+                              <span className="font-semibold text-slate-700">
+                                센서 아이디어:{' '}
+                              </span>
+                              {obs.sensorIdea}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleAdoptObservation(obs)}
+                        className="mt-2 inline-flex min-h-[42px] w-full items-center justify-center rounded-lg border border-emerald-700/40 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
+                      >
+                        이 공간·사진을 최종 주제로 가져오기
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* 하단 구역: 최종 모둠별 프로젝트 주제 선정 일지 */}
+      <div
+        ref={topicFormRef}
+        className="grid gap-8 lg:grid-cols-12 lg:items-start"
+      >
+        <aside className="space-y-4 lg:col-span-4">
           <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
               <Lightbulb
                 className="h-4 w-4 text-emerald-700"
                 aria-hidden="true"
               />
-              <span>2차시 모둠 활동 순서</span>
+              <span>2차시 모둠 협의 가이드</span>
             </div>
             <ol className="space-y-2.5 text-sm leading-relaxed text-slate-600">
               <li>
                 <span className="font-semibold text-slate-900">
-                  1. 원인과 문제점 비교:
+                  1. 1차시 기록 비교:
                 </span>{' '}
-                1차시에 각자 기록한 관찰 내용과 사진을 모둠별로 함께 살펴봅니다.
+                위에서 불러온 모둠원들의 사진과 원인을 보며 가장 시급하거나
+                센서로 해결하기 좋은 문제를 고릅니다.
               </li>
               <li>
                 <span className="font-semibold text-slate-900">
-                  2. 핵심 질문 1가지 선정:
+                  2. 최종 주제 1가지 확정:
                 </span>{' '}
-                비슷한 문제끼리 묶어 모둠에서 가장 해결하고 싶은 한 가지 주제를
+                모둠이 함께 만들 에너지 절약 시스템의 이름과 핵심 질문을
                 정합니다.
               </li>
               <li>
                 <span className="font-semibold text-slate-900">
-                  3. 제어 조건 초안 쓰기:
+                  3. 자연어 제어 조건 작성:
                 </span>{' '}
-                기존 경고문 방식에서 벗어나 센서로 어떻게 자동 제어할지
-                자연어로 정리합니다.
+                경고문이 아니라 센서 조건(“만약 ~라면 ~한다”)으로 해결 흐름을
+                적습니다.
               </li>
             </ol>
           </div>
+        </aside>
 
-          {/* 선택한 모둠의 1차시 관찰 결과 불러오기 */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Users
-                  className="h-4 w-4 text-emerald-700"
-                  aria-hidden="true"
-                />
-                <h2 className="text-sm font-semibold text-slate-900">
-                  {form.groupName
-                    ? `${form.groupName}의 1차시 관찰 기록`
-                    : '모둠의 1차시 관찰 기록'}
-                </h2>
-              </div>
-              <span className="text-xs text-slate-500 tabular-nums">
-                {matchingObservations.length}건
-              </span>
-            </div>
-
-            {matchingObservations.length === 0 ? (
-              <p className="rounded-lg bg-slate-50 p-3.5 text-xs leading-relaxed text-slate-600">
-                현재 선택된 모둠({form.groupName || '미선택'})의 1차시 관찰
-                기록이 아직 보이지 않습니다. 오른쪽 일지 양식에서 모둠을 바꾸거나,
-                직접 공간과 사진을 입력해 주제를 정할 수 있습니다.
-              </p>
-            ) : (
-              <ul className="space-y-3">
-                {matchingObservations.map((obs) => {
-                  const displayLocation = obs.locationDetail
-                    ? `${obs.locationCategory === '직접 입력' ? '' : obs.locationCategory + ' · '}${obs.locationDetail}`
-                    : obs.locationCategory;
-
-                  return (
-                    <li
-                      key={obs.id}
-                      className="rounded-lg border border-slate-200 bg-slate-50/70 p-3.5 space-y-2.5 text-sm"
-                    >
-                      <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-600">
-                        <span className="font-semibold text-slate-900">
-                          {obs.authorName}
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-medium text-emerald-800">
-                          {displayLocation}
-                        </span>
-                      </div>
-
-                      {obs.photoDataUrl && (
-                        <img
-                          src={obs.photoDataUrl}
-                          alt={
-                            obs.photoCaption || `${displayLocation} 관찰 사진`
-                          }
-                          referrerPolicy="no-referrer"
-                          className="max-h-40 w-full rounded-md border border-slate-200 object-cover"
-                        />
-                      )}
-
-                      <p className="text-xs leading-relaxed text-slate-800 sm:text-sm">
-                        {obs.wasteScene}
-                      </p>
-
-                      <button
-                        type="button"
-                        onClick={() => handleAdoptObservation(obs)}
-                        className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-emerald-700/30 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-50"
-                      >
-                        이 공간·사진을 최종 주제 자료로 가져오기
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </div>
-
-        {/* 오른쪽: 모둠별 프로젝트 주제 선정 일지 폼 */}
-        <div className="space-y-6 lg:col-span-7">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
+        <div className="space-y-6 lg:col-span-8">
+          <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
             <div className="border-b border-slate-100 pb-4">
               <p className="text-xs font-semibold text-emerald-800">
-                2차시 · 모둠별 1가지 최종 주제 확정
+                2단계 · 모둠별 1가지 최종 주제 확정
               </p>
               <h2 className="mt-1 text-lg font-bold text-slate-900 sm:text-xl">
-                모둠별 프로젝트 주제 선정 일지
+                최종 모둠별 프로젝트 주제 선정 일지
               </h2>
               <p className="mt-1 text-sm text-slate-600">
                 모둠 토의를 거쳐 결정한 단 하나의 프로젝트 주제와 핵심 질문을
@@ -362,7 +641,6 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
             </div>
 
             <form onSubmit={handleSubmit} noValidate className="mt-5 space-y-5">
-              {/* 학반 및 모둠 선택 */}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label
@@ -433,12 +711,12 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 </legend>
                 <div className="flex flex-wrap gap-2">
                   {GROUP_NAME_PRESETS.map((preset) => {
-                    const selected = groupPreset === preset;
+                    const selected = formGroupPreset === preset;
                     return (
                       <button
                         key={preset}
                         type="button"
-                        onClick={() => handleGroupPresetSelect(preset)}
+                        onClick={() => handleFormGroupPresetSelect(preset)}
                         aria-pressed={selected}
                         className={`min-h-[44px] rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                           selected
@@ -451,7 +729,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                     );
                   })}
                 </div>
-                {groupPreset === '직접 입력' && (
+                {formGroupPreset === '직접 입력' && (
                   <input
                     type="text"
                     value={form.groupName}
@@ -474,7 +752,6 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 )}
               </fieldset>
 
-              {/* 선정한 공간 및 기준 사진 */}
               <div className="space-y-2.5">
                 <label
                   htmlFor="selected-location"
@@ -506,7 +783,6 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   onChange={handlePhotoUpload}
                   className="sr-only"
                 />
@@ -552,7 +828,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                     <span>
                       {isProcessingPhoto
                         ? '사진을 불러오는 중...'
-                        : '현장 기준 사진 직접 올리기 (또는 왼쪽 1차시 기록에서 선택)'}
+                        : '현장 기준 사진 직접 올리기 (또는 위 1차시 기록에서 선택)'}
                     </span>
                   </button>
                 )}
@@ -564,7 +840,6 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 )}
               </div>
 
-              {/* 최종 모둠 프로젝트 주제 */}
               <div className="space-y-1.5">
                 <label
                   htmlFor="project-title"
@@ -593,7 +868,6 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 )}
               </div>
 
-              {/* 모둠 핵심 질문 */}
               <div className="space-y-1.5">
                 <label
                   htmlFor="core-question"
@@ -622,7 +896,6 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 )}
               </div>
 
-              {/* 선정 이유 */}
               <div className="space-y-1.5">
                 <label
                   htmlFor="selection-reason"
@@ -651,7 +924,6 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 )}
               </div>
 
-              {/* 자연어 제어 조건 초안 */}
               <div className="space-y-1.5">
                 <label
                   htmlFor="control-draft"
@@ -731,7 +1003,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 </div>
               </div>
             )}
-          </div>
+          </section>
 
           {topics.length > 0 && (
             <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
@@ -790,6 +1062,44 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
           )}
         </div>
       </div>
+
+      {/* 사진 크게 보기 모달 */}
+      {enlargedPhoto && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={enlargedPhoto.title}
+          onClick={() => setEnlargedPhoto(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-xl"
+          >
+            <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3">
+              <p className="text-sm font-semibold text-slate-900 truncate">
+                {enlargedPhoto.title}
+              </p>
+              <button
+                type="button"
+                onClick={() => setEnlargedPhoto(null)}
+                aria-label="사진 닫기"
+                className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="bg-slate-900 p-2">
+              <img
+                src={enlargedPhoto.src}
+                alt={enlargedPhoto.title}
+                referrerPolicy="no-referrer"
+                className="max-h-[75vh] w-full object-contain mx-auto"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

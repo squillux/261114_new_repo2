@@ -40,6 +40,13 @@ export interface GroupTopicRecord extends GroupTopicInput {
   syncState: SyncState;
 }
 
+export interface GroupAuthCode {
+  groupName: string;
+  code: string;
+  updatedAt: string;
+  syncState: SyncState;
+}
+
 export const SCHOOL_LOCATION_PRESETS = [
   '복도',
   '빈 교실',
