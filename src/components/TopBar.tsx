@@ -27,7 +27,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           onClick={() => onSelectView('lesson0')}
           className="text-left text-lg font-bold tracking-tight text-slate-900 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
         >
-          스마트 에코 스쿨
+          우리 학교 에너지 지킴이
         </button>
 
         <nav

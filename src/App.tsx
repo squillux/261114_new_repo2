@@ -656,7 +656,7 @@ export default function App() {
                     id="cover-hero-title"
                     className="text-2xl font-bold tracking-tight text-slate-900 sm:text-4xl"
                   >
-                    피지컬 컴퓨팅으로 만드는 스마트 에코 스쿨
+                    피지컬 컴퓨팅으로 만드는 우리 학교 에너지 지킴이
                   </h1>
                   <p className="max-w-2xl text-base leading-relaxed text-slate-700 sm:text-lg">
                     학교 공간을 둘러보며 에너지가 낭비되는 곳을 찾고, 사진과
@@ -863,7 +863,7 @@ export default function App() {
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <span>
-            피지컬 컴퓨팅으로 만드는 스마트 에코 스쿨 · 1·2차시 활동
+            피지컬 컴퓨팅으로 만드는 우리 학교 에너지 지킴이 · 1·2차시 활동
           </span>
           {activeView === 'teacher' ? (
             <button
