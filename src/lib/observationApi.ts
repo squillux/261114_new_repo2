@@ -7,48 +7,81 @@ import type {
   StorageConnectionStatus,
 } from '../types/observation';
 
+const HEALTH_ENDPOINT = '/api/health';
+const TEACHER_SESSION_ENDPOINT = '/api/teacher/session';
+const TEACHER_LOGIN_ENDPOINT = '/api/teacher/login';
+const TEACHER_LOGOUT_ENDPOINT = '/api/teacher/logout';
 const OBSERVATIONS_ENDPOINT = '/api/observations';
 const GROUP_TOPICS_ENDPOINT = '/api/group-topics';
 const GROUP_CODES_ENDPOINT = '/api/group-codes';
 const GROUP_VERIFY_ENDPOINT = '/api/group-observations/verify';
 
-const PREVIEW_OBSERVATIONS_KEY = 'smart_eco_school_preview_observations_v2';
-const PREVIEW_TOPICS_KEY = 'smart_eco_school_preview_group_topics_v1';
-const PREVIEW_CODES_KEY = 'smart_eco_school_preview_group_codes_v1';
+const PREVIEW_OBSERVATIONS_KEY = 'smart_eco_school_preview_observations_v3';
+const PREVIEW_TOPICS_KEY = 'smart_eco_school_preview_group_topics_v2';
+const PREVIEW_CODES_KEY = 'smart_eco_school_preview_group_codes_v2';
+
+export interface ApiHealthResult {
+  status: StorageConnectionStatus;
+  tablesReady: boolean;
+  hasTeacherPassword: boolean;
+  message?: string;
+}
+
+export interface ApiTeacherSessionResult {
+  status: StorageConnectionStatus;
+  authenticated: boolean;
+  configured: boolean;
+}
+
+export interface ApiTeacherLoginResult {
+  ok: boolean;
+  status: StorageConnectionStatus;
+  authenticated: boolean;
+  message: string;
+}
 
 export interface ApiFetchObservationsResult {
   status: StorageConnectionStatus;
+  authorized: boolean;
   records: ObservationRecord[];
+  error?: string;
 }
 
 export interface ApiSubmitObservationResult {
   savedToServer: boolean;
+  failed: boolean;
   status: StorageConnectionStatus;
-  record: ObservationRecord;
+  record?: ObservationRecord;
   message: string;
 }
 
 export interface ApiFetchTopicsResult {
   status: StorageConnectionStatus;
+  authorized: boolean;
   records: GroupTopicRecord[];
+  error?: string;
 }
 
 export interface ApiSubmitTopicResult {
   savedToServer: boolean;
+  failed: boolean;
   status: StorageConnectionStatus;
-  record: GroupTopicRecord;
+  record?: GroupTopicRecord;
   message: string;
 }
 
 export interface ApiFetchCodesResult {
   status: StorageConnectionStatus;
+  authorized: boolean;
   codes: GroupAuthCode[];
+  error?: string;
 }
 
 export interface ApiSaveCodeResult {
   savedToServer: boolean;
+  failed: boolean;
   status: StorageConnectionStatus;
-  entry: GroupAuthCode;
+  entry?: GroupAuthCode;
   message: string;
 }
 
@@ -57,6 +90,13 @@ export interface ApiVerifyGroupResult {
   status: StorageConnectionStatus;
   observations: ObservationRecord[];
   message: string;
+}
+
+export interface ApiDeleteResult {
+  deletedOnServer: boolean;
+  failed: boolean;
+  status: StorageConnectionStatus;
+  error?: string;
 }
 
 function isJsonResponse(response: Response): boolean {
@@ -161,18 +201,169 @@ export function clearPreviewCodes(): void {
   }
 }
 
+export async function checkApiHealth(): Promise<ApiHealthResult> {
+  try {
+    const response = await fetch(HEALTH_ENDPOINT, {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    });
+
+    if (!isJsonResponse(response)) {
+      return {
+        status: 'not-connected',
+        tablesReady: false,
+        hasTeacherPassword: false,
+      };
+    }
+
+    const data = await response.json();
+    const connected = Boolean(response.ok && data?.connected);
+    return {
+      status: connected ? 'connected' : 'not-connected',
+      tablesReady: Boolean(data?.tablesReady),
+      hasTeacherPassword: Boolean(data?.hasTeacherPassword),
+      message: typeof data?.error === 'string' ? data.error : undefined,
+    };
+  } catch {
+    return {
+      status: 'not-connected',
+      tablesReady: false,
+      hasTeacherPassword: false,
+    };
+  }
+}
+
+export async function fetchTeacherSession(): Promise<ApiTeacherSessionResult> {
+  try {
+    const response = await fetch(TEACHER_SESSION_ENDPOINT, {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    });
+
+    if (!isJsonResponse(response)) {
+      return {
+        status: 'not-connected',
+        authenticated: false,
+        configured: false,
+      };
+    }
+
+    const data = await response.json();
+    return {
+      status: 'connected',
+      authenticated: Boolean(data?.authenticated),
+      configured: Boolean(data?.configured),
+    };
+  } catch {
+    return {
+      status: 'not-connected',
+      authenticated: false,
+      configured: false,
+    };
+  }
+}
+
+export async function loginTeacher(
+  password: string
+): Promise<ApiTeacherLoginResult> {
+  try {
+    const response = await fetch(TEACHER_LOGIN_ENDPOINT, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ password }),
+    });
+
+    if (!isJsonResponse(response)) {
+      return {
+        ok: false,
+        status: 'not-connected',
+        authenticated: false,
+        message:
+          '아직 Cloudflare Worker 서버(/api/teacher/login)가 연결되지 않았습니다.',
+      };
+    }
+
+    const data = await response.json();
+    if (response.ok && data?.authenticated) {
+      return {
+        ok: true,
+        status: 'connected',
+        authenticated: true,
+        message: '교사 인증이 완료되었습니다.',
+      };
+    }
+
+    return {
+      ok: false,
+      status: response.status >= 500 ? 'not-connected' : 'connected',
+      authenticated: false,
+      message:
+        typeof data?.error === 'string'
+          ? data.error
+          : '교사 비밀번호 확인에 실패했습니다.',
+    };
+  } catch {
+    return {
+      ok: false,
+      status: 'not-connected',
+      authenticated: false,
+      message: '서버와 연결할 수 없어 로그인하지 못했습니다.',
+    };
+  }
+}
+
+export async function logoutTeacher(): Promise<void> {
+  try {
+    await fetch(TEACHER_LOGOUT_ENDPOINT, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    });
+  } catch {
+    // Ignore logout network error when offline/not-connected
+  }
+}
+
 export async function fetchObservationsFromApi(): Promise<ApiFetchObservationsResult> {
   try {
     const response = await fetch(OBSERVATIONS_ENDPOINT, {
       method: 'GET',
+      credentials: 'same-origin',
       headers: { Accept: 'application/json' },
     });
 
-    if (!response.ok || !isJsonResponse(response)) {
-      return { status: 'not-connected', records: [] };
+    if (!isJsonResponse(response)) {
+      return { status: 'not-connected', authorized: false, records: [] };
     }
 
     const data = await response.json();
+    if (response.status === 401 || response.status === 403) {
+      return {
+        status: 'connected',
+        authorized: false,
+        records: [],
+        error: typeof data?.error === 'string' ? data.error : undefined,
+      };
+    }
+
+    if (!response.ok) {
+      return {
+        status: 'not-connected',
+        authorized: true,
+        records: [],
+        error:
+          typeof data?.error === 'string'
+            ? data.error
+            : '관찰 일지를 불러오지 못했습니다.',
+      };
+    }
+
     const list = Array.isArray(data)
       ? data
       : Array.isArray(data?.observations)
@@ -186,9 +377,9 @@ export async function fetchObservationsFromApi(): Promise<ApiFetchObservationsRe
       })
     );
 
-    return { status: 'connected', records: normalized };
+    return { status: 'connected', authorized: true, records: normalized };
   } catch {
-    return { status: 'not-connected', records: [] };
+    return { status: 'not-connected', authorized: false, records: [] };
   }
 }
 
@@ -201,6 +392,7 @@ export async function submitObservation(
   try {
     const response = await fetch(OBSERVATIONS_ENDPOINT, {
       method: 'POST',
+      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
@@ -208,28 +400,43 @@ export async function submitObservation(
       body: JSON.stringify({ ...input, createdAt: nowIso }),
     });
 
-    if (response.ok && isJsonResponse(response)) {
-      const saved = await response.json();
-      const serverRecord: ObservationRecord = {
-        ...input,
-        id: saved?.id ? String(saved.id) : localId,
-        createdAt: saved?.createdAt ? String(saved.createdAt) : nowIso,
-        syncState: 'saved-to-api',
-      };
+    if (isJsonResponse(response)) {
+      const data = await response.json();
+      if (response.ok && data?.ok !== false) {
+        const serverRecord: ObservationRecord = {
+          ...input,
+          id: data?.id ? String(data.id) : localId,
+          createdAt: data?.createdAt ? String(data.createdAt) : nowIso,
+          syncState: 'saved-to-api',
+        };
+
+        return {
+          savedToServer: true,
+          failed: false,
+          status: 'connected',
+          record: serverRecord,
+          message:
+            '서버(Cloudflare D1)에 개인 관찰 일지가 안전하게 저장되었습니다.',
+        };
+      }
 
       return {
-        savedToServer: true,
-        status: 'connected',
-        record: serverRecord,
-        message: '서버(/api/observations)에 개인 관찰 일지가 저장되었습니다.',
+        savedToServer: false,
+        failed: true,
+        status: response.status >= 500 ? 'not-connected' : 'connected',
+        message:
+          typeof data?.error === 'string'
+            ? data.error
+            : '개인 관찰 일지를 서버에 저장하지 못했습니다.',
       };
     }
   } catch {
-    // Not connected yet
+    // Not connected yet (e.g. Vite dev preview without Worker)
   }
 
   return {
     savedToServer: false,
+    failed: false,
     status: 'not-connected',
     record: {
       ...input,
@@ -238,22 +445,77 @@ export async function submitObservation(
       syncState: 'preview-only',
     },
     message:
-      '저장 준비 중: 아직 /api 데이터 저장소가 연결되지 않아 다른 기기로 전송되지 않았습니다. 현재 브라우저 임시 미리보기 목록에만 표시됩니다.',
+      '저장되지 않음 (저장 준비 중): 아직 Cloudflare D1 저장소가 연결되지 않아 서버에 저장되지 않았습니다. 현재 브라우저 화면 미리보기에서만 확인할 수 있습니다.',
   };
+}
+
+export async function deleteObservationFromApi(
+  id: string
+): Promise<ApiDeleteResult> {
+  try {
+    const response = await fetch(
+      `${OBSERVATIONS_ENDPOINT}/${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      }
+    );
+    if (isJsonResponse(response)) {
+      const data = await response.json();
+      if (response.ok && data?.ok !== false) {
+        return { deletedOnServer: true, failed: false, status: 'connected' };
+      }
+      return {
+        deletedOnServer: false,
+        failed: true,
+        status: response.status >= 500 ? 'not-connected' : 'connected',
+        error:
+          typeof data?.error === 'string'
+            ? data.error
+            : '기록을 삭제하지 못했습니다.',
+      };
+    }
+  } catch {
+    // Not connected yet
+  }
+  return { deletedOnServer: false, failed: false, status: 'not-connected' };
 }
 
 export async function fetchGroupTopicsFromApi(): Promise<ApiFetchTopicsResult> {
   try {
     const response = await fetch(GROUP_TOPICS_ENDPOINT, {
       method: 'GET',
+      credentials: 'same-origin',
       headers: { Accept: 'application/json' },
     });
 
-    if (!response.ok || !isJsonResponse(response)) {
-      return { status: 'not-connected', records: [] };
+    if (!isJsonResponse(response)) {
+      return { status: 'not-connected', authorized: false, records: [] };
     }
 
     const data = await response.json();
+    if (response.status === 401 || response.status === 403) {
+      return {
+        status: 'connected',
+        authorized: false,
+        records: [],
+        error: typeof data?.error === 'string' ? data.error : undefined,
+      };
+    }
+
+    if (!response.ok) {
+      return {
+        status: 'not-connected',
+        authorized: true,
+        records: [],
+        error:
+          typeof data?.error === 'string'
+            ? data.error
+            : '모둠별 주제를 불러오지 못했습니다.',
+      };
+    }
+
     const list = Array.isArray(data)
       ? data
       : Array.isArray(data?.topics)
@@ -267,9 +529,9 @@ export async function fetchGroupTopicsFromApi(): Promise<ApiFetchTopicsResult> {
       })
     );
 
-    return { status: 'connected', records: normalized };
+    return { status: 'connected', authorized: true, records: normalized };
   } catch {
-    return { status: 'not-connected', records: [] };
+    return { status: 'not-connected', authorized: false, records: [] };
   }
 }
 
@@ -282,6 +544,7 @@ export async function submitGroupTopic(
   try {
     const response = await fetch(GROUP_TOPICS_ENDPOINT, {
       method: 'POST',
+      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
@@ -289,20 +552,34 @@ export async function submitGroupTopic(
       body: JSON.stringify({ ...input, createdAt: nowIso }),
     });
 
-    if (response.ok && isJsonResponse(response)) {
-      const saved = await response.json();
-      const serverRecord: GroupTopicRecord = {
-        ...input,
-        id: saved?.id ? String(saved.id) : localId,
-        createdAt: saved?.createdAt ? String(saved.createdAt) : nowIso,
-        syncState: 'saved-to-api',
-      };
+    if (isJsonResponse(response)) {
+      const data = await response.json();
+      if (response.ok && data?.ok !== false) {
+        const serverRecord: GroupTopicRecord = {
+          ...input,
+          id: data?.id ? String(data.id) : localId,
+          createdAt: data?.createdAt ? String(data.createdAt) : nowIso,
+          syncState: 'saved-to-api',
+        };
+
+        return {
+          savedToServer: true,
+          failed: false,
+          status: 'connected',
+          record: serverRecord,
+          message:
+            '서버(Cloudflare D1)에 모둠별 프로젝트 주제가 저장되었습니다.',
+        };
+      }
 
       return {
-        savedToServer: true,
-        status: 'connected',
-        record: serverRecord,
-        message: '서버(/api/group-topics)에 모둠별 프로젝트 주제가 저장되었습니다.',
+        savedToServer: false,
+        failed: true,
+        status: response.status >= 500 ? 'not-connected' : 'connected',
+        message:
+          typeof data?.error === 'string'
+            ? data.error
+            : '모둠 프로젝트 주제를 서버에 저장하지 못했습니다.',
       };
     }
   } catch {
@@ -311,6 +588,7 @@ export async function submitGroupTopic(
 
   return {
     savedToServer: false,
+    failed: false,
     status: 'not-connected',
     record: {
       ...input,
@@ -319,22 +597,77 @@ export async function submitGroupTopic(
       syncState: 'preview-only',
     },
     message:
-      '저장 준비 중: 아직 /api 데이터 저장소가 연결되지 않아 다른 기기로 전송되지 않았습니다. 현재 브라우저 임시 미리보기 목록에만 표시됩니다.',
+      '저장되지 않음 (저장 준비 중): 아직 Cloudflare D1 저장소가 연결되지 않아 서버에 저장되지 않았습니다. 현재 브라우저 화면 미리보기에서만 확인할 수 있습니다.',
   };
+}
+
+export async function deleteGroupTopicFromApi(
+  id: string
+): Promise<ApiDeleteResult> {
+  try {
+    const response = await fetch(
+      `${GROUP_TOPICS_ENDPOINT}/${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      }
+    );
+    if (isJsonResponse(response)) {
+      const data = await response.json();
+      if (response.ok && data?.ok !== false) {
+        return { deletedOnServer: true, failed: false, status: 'connected' };
+      }
+      return {
+        deletedOnServer: false,
+        failed: true,
+        status: response.status >= 500 ? 'not-connected' : 'connected',
+        error:
+          typeof data?.error === 'string'
+            ? data.error
+            : '모둠 주제를 삭제하지 못했습니다.',
+      };
+    }
+  } catch {
+    // Not connected yet
+  }
+  return { deletedOnServer: false, failed: false, status: 'not-connected' };
 }
 
 export async function fetchGroupCodesFromApi(): Promise<ApiFetchCodesResult> {
   try {
     const response = await fetch(GROUP_CODES_ENDPOINT, {
       method: 'GET',
+      credentials: 'same-origin',
       headers: { Accept: 'application/json' },
     });
 
-    if (!response.ok || !isJsonResponse(response)) {
-      return { status: 'not-connected', codes: [] };
+    if (!isJsonResponse(response)) {
+      return { status: 'not-connected', authorized: false, codes: [] };
     }
 
     const data = await response.json();
+    if (response.status === 401 || response.status === 403) {
+      return {
+        status: 'connected',
+        authorized: false,
+        codes: [],
+        error: typeof data?.error === 'string' ? data.error : undefined,
+      };
+    }
+
+    if (!response.ok) {
+      return {
+        status: 'not-connected',
+        authorized: true,
+        codes: [],
+        error:
+          typeof data?.error === 'string'
+            ? data.error
+            : '모둠 인증코드 목록을 불러오지 못했습니다.',
+      };
+    }
+
     const list = Array.isArray(data)
       ? data
       : Array.isArray(data?.codes)
@@ -346,46 +679,68 @@ export async function fetchGroupCodesFromApi(): Promise<ApiFetchCodesResult> {
       syncState: 'saved-to-api',
     }));
 
-    return { status: 'connected', codes: normalized };
+    return { status: 'connected', authorized: true, codes: normalized };
   } catch {
-    return { status: 'not-connected', codes: [] };
+    return { status: 'not-connected', authorized: false, codes: [] };
   }
 }
 
 export async function saveGroupCode(
+  classRoom: string,
   groupName: string,
   code: string
 ): Promise<ApiSaveCodeResult> {
   const nowIso = new Date().toISOString();
+  const normalizedClass = classRoom.trim();
   const normalizedGroup = groupName.trim();
   const normalizedCode = code.trim();
 
   try {
     const response = await fetch(GROUP_CODES_ENDPOINT, {
       method: 'POST',
+      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
       body: JSON.stringify({
+        classRoom: normalizedClass,
         groupName: normalizedGroup,
         code: normalizedCode,
         updatedAt: nowIso,
       }),
     });
 
-    if (response.ok && isJsonResponse(response)) {
-      const saved = await response.json();
+    if (isJsonResponse(response)) {
+      const data = await response.json();
+      if (response.ok && data?.ok !== false) {
+        return {
+          savedToServer: true,
+          failed: false,
+          status: 'connected',
+          entry: {
+            classRoom: data?.classRoom
+              ? String(data.classRoom)
+              : normalizedClass,
+            groupName: data?.groupName
+              ? String(data.groupName)
+              : normalizedGroup,
+            code: data?.code ? String(data.code) : normalizedCode,
+            updatedAt: data?.updatedAt ? String(data.updatedAt) : nowIso,
+            syncState: 'saved-to-api',
+          },
+          message: '서버(Cloudflare D1)에 모둠 인증코드가 저장되었습니다.',
+        };
+      }
+
       return {
-        savedToServer: true,
-        status: 'connected',
-        entry: {
-          groupName: saved?.groupName ? String(saved.groupName) : normalizedGroup,
-          code: saved?.code ? String(saved.code) : normalizedCode,
-          updatedAt: saved?.updatedAt ? String(saved.updatedAt) : nowIso,
-          syncState: 'saved-to-api',
-        },
-        message: '서버(/api/group-codes)에 모둠 인증코드가 저장되었습니다.',
+        savedToServer: false,
+        failed: true,
+        status: response.status >= 500 ? 'not-connected' : 'connected',
+        message:
+          typeof data?.error === 'string'
+            ? data.error
+            : '모둠 인증코드를 저장하지 못했습니다.',
       };
     }
   } catch {
@@ -394,35 +749,79 @@ export async function saveGroupCode(
 
   return {
     savedToServer: false,
+    failed: false,
     status: 'not-connected',
     entry: {
+      classRoom: normalizedClass,
       groupName: normalizedGroup,
       code: normalizedCode,
       updatedAt: nowIso,
       syncState: 'preview-only',
     },
     message:
-      '저장 준비 중: 아직 /api 데이터 저장소가 연결되지 않아 현재 브라우저 임시 미리보기에만 반영되었습니다. 같은 브라우저의 2차시 화면에서 바로 테스트할 수 있습니다.',
+      '저장되지 않음 (저장 준비 중): 아직 Cloudflare D1 저장소가 연결되지 않아 현재 브라우저 임시 미리보기에만 반영되었습니다.',
   };
 }
 
+export async function deleteGroupCodeFromApi(
+  classRoom: string,
+  groupName: string
+): Promise<ApiDeleteResult> {
+  try {
+    const params = new URLSearchParams({
+      classRoom: classRoom.trim(),
+      groupName: groupName.trim(),
+    });
+    const response = await fetch(
+      `${GROUP_CODES_ENDPOINT}?${params.toString()}`,
+      {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      }
+    );
+    if (isJsonResponse(response)) {
+      const data = await response.json();
+      if (response.ok && data?.ok !== false) {
+        return { deletedOnServer: true, failed: false, status: 'connected' };
+      }
+      return {
+        deletedOnServer: false,
+        failed: true,
+        status: response.status >= 500 ? 'not-connected' : 'connected',
+        error:
+          typeof data?.error === 'string'
+            ? data.error
+            : '모둠 인증코드를 삭제하지 못했습니다.',
+      };
+    }
+  } catch {
+    // Not connected yet
+  }
+  return { deletedOnServer: false, failed: false, status: 'not-connected' };
+}
+
 export async function verifyGroupAuthAndFetchObservations(
+  classRoom: string,
   groupName: string,
   code: string,
   previewCodes: GroupAuthCode[],
   previewObservations: ObservationRecord[]
 ): Promise<ApiVerifyGroupResult> {
+  const normalizedClass = classRoom.trim();
   const normalizedGroup = groupName.trim();
   const normalizedCode = code.trim();
 
   try {
     const response = await fetch(GROUP_VERIFY_ENDPOINT, {
       method: 'POST',
+      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
       body: JSON.stringify({
+        classRoom: normalizedClass,
         groupName: normalizedGroup,
         code: normalizedCode,
       }),
@@ -439,27 +838,27 @@ export async function verifyGroupAuthAndFetchObservations(
             ...item,
             syncState: 'saved-to-api',
           })),
-          message: `${normalizedGroup} 인증이 완료되었습니다.`,
+          message: `${normalizedClass} ${normalizedGroup} 인증이 완료되었습니다.`,
         };
       }
 
-      if (response.status === 401 || response.status === 403 || data?.verified === false) {
-        return {
-          verified: false,
-          status: 'connected',
-          observations: [],
-          message:
-            data?.message ||
-            '모둠 인증코드가 일치하지 않습니다. 선생님께 받은 코드를 다시 확인해 주세요.',
-        };
-      }
+      return {
+        verified: false,
+        status: response.status >= 500 ? 'not-connected' : 'connected',
+        observations: [],
+        message:
+          data?.message ||
+          '모둠 인증코드가 일치하지 않습니다. 선생님께 받은 코드를 다시 확인해 주세요.',
+      };
     }
   } catch {
     // Not connected yet; evaluate against teacher-created preview codes
   }
 
   const matchedCode = previewCodes.find(
-    (item) => item.groupName.trim() === normalizedGroup
+    (item) =>
+      item.classRoom.trim() === normalizedClass &&
+      item.groupName.trim() === normalizedGroup
   );
 
   if (!matchedCode) {
@@ -467,7 +866,7 @@ export async function verifyGroupAuthAndFetchObservations(
       verified: false,
       status: 'not-connected',
       observations: [],
-      message: `아직 교사가 "${normalizedGroup}"의 인증코드를 만들지 않았습니다. 교사 확인 화면 → 「모둠 인증코드 관리」에서 인증코드를 먼저 만들어 주세요.`,
+      message: `아직 "${normalizedClass} ${normalizedGroup}"의 인증코드가 등록되지 않았습니다. 선생님께 모둠 인증코드를 확인해 주세요.`,
     };
   }
 
@@ -482,13 +881,15 @@ export async function verifyGroupAuthAndFetchObservations(
   }
 
   const matchedObs = previewObservations.filter(
-    (obs) => obs.groupName.trim() === normalizedGroup
+    (obs) =>
+      obs.classRoom.trim() === normalizedClass &&
+      obs.groupName.trim() === normalizedGroup
   );
 
   return {
     verified: true,
     status: 'not-connected',
     observations: matchedObs,
-    message: `임시 미리보기 인증 완료 (${normalizedGroup}) · 저장소(/api) 연결 전이므로 현재 브라우저에 입력된 1차시 기록만 표시됩니다.`,
+    message: `임시 미리보기 인증 완료 (${normalizedClass} ${normalizedGroup}) · 저장소 연결 전이므로 현재 브라우저에 입력된 1차시 기록만 표시됩니다.`,
   };
 }

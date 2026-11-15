@@ -7,6 +7,7 @@ interface StorageStatusNoticeProps {
   onRetryCheck?: () => void;
   isChecking?: boolean;
   context: 'student' | 'teacher';
+  statusDetail?: string;
 }
 
 export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
@@ -14,6 +15,7 @@ export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
   onRetryCheck,
   isChecking = false,
   context,
+  statusDetail,
 }) => {
   if (status === 'connected') {
     return (
@@ -27,14 +29,14 @@ export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
             aria-hidden="true"
           />
           <div>
-            <span className="font-semibold">저장소 연결됨</span>
+            <span className="font-semibold">Cloudflare D1 연결됨</span>
             <span className="mx-1.5 text-emerald-700" aria-hidden="true">
               ·
             </span>
             <span className="text-emerald-900">
               {context === 'student'
-                ? '입력한 관찰 일지가 /api/observations 경로를 통해 서버 데이터베이스에 저장됩니다.'
-                : '/api/observations 경로에서 제출된 관찰 일지를 불러왔습니다.'}
+                ? '제출한 관찰 일지가 /api 경로를 통해 Cloudflare D1 데이터베이스에 안전하게 저장됩니다.'
+                : '교사 인증 후 Cloudflare D1에 저장된 학생 응답을 조회하고 관리할 수 있습니다.'}
             </span>
           </div>
         </div>
@@ -49,7 +51,7 @@ export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
               className={`h-3.5 w-3.5 ${isChecking ? 'animate-spin' : ''}`}
               aria-hidden="true"
             />
-            새로고침
+            연결 확인
           </button>
         )}
       </div>
@@ -66,7 +68,7 @@ export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
           className="h-4 w-4 shrink-0 animate-spin text-slate-500"
           aria-hidden="true"
         />
-        <span>데이터 저장소(/api/observations) 연결 상태를 확인하고 있습니다.</span>
+        <span>데이터 저장소(/api/health) 연결 상태를 확인하고 있습니다.</span>
       </div>
     );
   }
@@ -83,12 +85,13 @@ export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
         />
         <div className="space-y-0.5 leading-relaxed">
           <p className="font-semibold">
-            저장 준비 중 · /api 데이터 저장소 미연결 (3차시 D1 연결 예정)
+            저장 준비 중 · Cloudflare D1 저장소 미연결
           </p>
           <p className="text-xs sm:text-sm text-amber-900">
-            {context === 'student'
-              ? '아직 서버 저장소가 연결되지 않아 입력한 내용은 다른 기기로 저장되지 않습니다. 현재 브라우저 화면의 임시 미리보기에서만 확인할 수 있습니다.'
-              : '아직 /api/observations 저장소가 연결되지 않아 다른 기기의 제출 내역을 불러올 수 없습니다. 아래에는 현재 브라우저에서 작성한 임시 미리보기 기록만 표시됩니다.'}
+            {statusDetail ||
+              (context === 'student'
+                ? '아직 서버 저장소가 연결되지 않아 입력한 내용은 서버에 저장되지 않습니다. 현재 브라우저 화면 미리보기에서만 흐름을 확인할 수 있습니다.'
+                : '아직 /api 저장소가 연결되지 않아 서버의 학생 응답을 불러올 수 없습니다. 아래에는 현재 브라우저의 임시 미리보기 기록만 표시됩니다.')}
           </p>
         </div>
       </div>

@@ -1,21 +1,25 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
-  ArrowRight,
   Camera,
   Check,
+  ChevronDown,
   Clock,
+  Images,
+  Info,
   KeyRound,
   Lightbulb,
   Lock,
   Maximize2,
+  RefreshCw,
   Send,
   Trash2,
   Unlock,
-  Users,
+  Upload,
   X,
 } from 'lucide-react';
 import {
+  CLASS_ROOM_PRESETS,
   GROUP_NAME_PRESETS,
   type GroupAuthCode,
   type GroupTopicInput,
@@ -23,7 +27,7 @@ import {
   type ObservationRecord,
   type StorageConnectionStatus,
 } from '../types/observation';
-import { compressImageFile } from '../lib/imageUtils';
+import { captureVideoFrame, compressImageFile } from '../lib/imageUtils';
 import {
   submitGroupTopic,
   verifyGroupAuthAndFetchObservations,
@@ -40,12 +44,11 @@ interface GroupTopicSelectionViewProps {
   onRetryConnection: () => void;
   onTopicSubmitted: (result: ApiSubmitTopicResult) => void;
   onDeletePreviewTopic: (id: string) => void;
-  onGoToTeacherView: () => void;
-  onGoToTeacherCodes: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 const INITIAL_TOPIC_FORM: GroupTopicInput = {
-  classInfo: '',
+  classRoom: '1학년 1반',
   groupName: '1모둠',
   groupMembers: '',
   selectedLocation: '',
@@ -53,6 +56,8 @@ const INITIAL_TOPIC_FORM: GroupTopicInput = {
   projectTitle: '',
   coreQuestion: '',
   selectionReason: '',
+  controlConditionWhen: '',
+  controlConditionThen: '',
   controlConditionDraft: '',
 };
 
@@ -65,16 +70,21 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
   onRetryConnection,
   onTopicSubmitted,
   onDeletePreviewTopic,
-  onGoToTeacherView,
-  onGoToTeacherCodes,
+  onDirtyChange,
 }) => {
+  const baselineFormRef = useRef<GroupTopicInput>(INITIAL_TOPIC_FORM);
   // 상단 구역: 모둠 인증코드 확인 상태
+  const [authClassPreset, setAuthClassPreset] = useState<string>('1학년 1반');
+  const [authClassRoom, setAuthClassRoom] = useState<string>('1학년 1반');
   const [authGroupPreset, setAuthGroupPreset] = useState<string>('1모둠');
   const [authGroupName, setAuthGroupName] = useState<string>('1모둠');
   const [authCodeInput, setAuthCodeInput] = useState<string>('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string>('');
-  const [unlockedGroup, setUnlockedGroup] = useState<string | null>(null);
+  const [unlockedTarget, setUnlockedTarget] = useState<{
+    classRoom: string;
+    groupName: string;
+  } | null>(null);
   const [verifiedObservations, setVerifiedObservations] = useState<
     ObservationRecord[]
   >([]);
@@ -86,16 +96,207 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
 
   // 하단 구역: 최종 모둠 프로젝트 주제 선정 일지 폼 상태
   const [form, setForm] = useState<GroupTopicInput>(INITIAL_TOPIC_FORM);
+  const [formClassPreset, setFormClassPreset] = useState<string>('1학년 1반');
   const [formGroupPreset, setFormGroupPreset] = useState<string>('1모둠');
+  const [adoptedSensorIdea, setAdoptedSensorIdea] = useState<string>('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [photoError, setPhotoError] = useState('');
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [isRequestingCamera, setIsRequestingCamera] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>(
+    'environment'
+  );
+  const [cameraFallbackAvailable, setCameraFallbackAvailable] = useState(false);
+  const [isLesson1PickerOpen, setIsLesson1PickerOpen] = useState(false);
+  const [selectedLesson1ObsId, setSelectedLesson1ObsId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitFeedback, setSubmitFeedback] =
     useState<ApiSubmitTopicResult | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const nativeCaptureInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const topicFormRef = useRef<HTMLDivElement | null>(null);
+
+  const verifiedObservationsWithPhotos = verifiedObservations.filter((obs) =>
+    Boolean(obs.photoDataUrl)
+  );
+
+  const stopCameraStream = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const base = baselineFormRef.current;
+    const isDirty =
+      form.classRoom !== base.classRoom ||
+      form.groupName !== base.groupName ||
+      form.groupMembers !== base.groupMembers ||
+      form.selectedLocation !== base.selectedLocation ||
+      form.referencePhotoDataUrl !== base.referencePhotoDataUrl ||
+      form.projectTitle !== base.projectTitle ||
+      form.coreQuestion !== base.coreQuestion ||
+      form.selectionReason !== base.selectionReason ||
+      form.controlConditionWhen !== base.controlConditionWhen ||
+      form.controlConditionThen !== base.controlConditionThen ||
+      form.controlConditionDraft !== base.controlConditionDraft;
+    onDirtyChange?.(isDirty);
+  }, [form, onDirtyChange]);
+
+  useEffect(() => {
+    return () => {
+      onDirtyChange?.(false);
+    };
+  }, [onDirtyChange]);
+
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isCameraOpen && videoRef.current && streamRef.current) {
+      const videoEl = videoRef.current;
+      videoEl.srcObject = streamRef.current;
+      void videoEl.play().catch(() => {
+        // Ignore autoplay promise rejection if already playing
+      });
+    }
+  }, [isCameraOpen]);
+
+  const startCamera = async (targetFacing: 'environment' | 'user') => {
+    setPhotoError('');
+    setCameraFallbackAvailable(false);
+    setIsLesson1PickerOpen(false);
+
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== 'function'
+    ) {
+      setPhotoError(
+        '현재 브라우저 환경에서 실시간 카메라 실행이 지원되지 않습니다. 아래 기기 카메라 또는 사진 파일 업로드를 이용해 주세요.'
+      );
+      setCameraFallbackAvailable(true);
+      return;
+    }
+
+    stopCameraStream();
+    setIsRequestingCamera(true);
+
+    try {
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: targetFacing } },
+          audio: false,
+        });
+      } catch (firstErr) {
+        if (
+          firstErr instanceof DOMException &&
+          (firstErr.name === 'OverconstrainedError' ||
+            firstErr.name === 'ConstraintNotSatisfiedError')
+        ) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        } else {
+          throw firstErr;
+        }
+      }
+
+      streamRef.current = stream;
+      setFacingMode(targetFacing);
+      setIsCameraOpen(true);
+    } catch (err) {
+      stopCameraStream();
+      if (err instanceof DOMException) {
+        if (
+          err.name === 'NotAllowedError' ||
+          err.name === 'PermissionDeniedError'
+        ) {
+          setPhotoError(
+            '카메라 권한이 허용되지 않았습니다. 브라우저 상단 권한 창에서 "허용"을 선택하거나 아래 기기 카메라·사진 파일 업로드를 이용해 주세요.'
+          );
+          setCameraFallbackAvailable(true);
+        } else if (
+          err.name === 'NotFoundError' ||
+          err.name === 'DevicesNotFoundError'
+        ) {
+          setPhotoError(
+            '이 기기에서 연결된 카메라(웹캠)를 찾지 못했습니다. 아래 "저장된 사진 파일에서 올리기"를 이용해 주세요.'
+          );
+        } else if (
+          err.name === 'NotReadableError' ||
+          err.name === 'TrackStartError'
+        ) {
+          setPhotoError(
+            '카메라가 다른 프로그램에서 사용 중입니다. 다른 앱을 닫고 다시 시도하거나 사진 파일 업로드를 이용해 주세요.'
+          );
+          setCameraFallbackAvailable(true);
+        } else {
+          setPhotoError(
+            `카메라를 여는 중 문제가 발생했습니다(${err.name}). 사진 파일 업로드를 이용해 주세요.`
+          );
+          setCameraFallbackAvailable(true);
+        }
+      } else {
+        setPhotoError(
+          '카메라를 시작할 수 없습니다. 아래 사진 파일 업로드를 이용해 주세요.'
+        );
+        setCameraFallbackAvailable(true);
+      }
+    } finally {
+      setIsRequestingCamera(false);
+    }
+  };
+
+  const handleCapturePhoto = () => {
+    if (!videoRef.current) return;
+    setPhotoError('');
+    try {
+      const captured = captureVideoFrame(videoRef.current);
+      setForm((prev) => ({
+        ...prev,
+        referencePhotoDataUrl: captured.dataUrl,
+      }));
+      setSelectedLesson1ObsId('');
+      stopCameraStream();
+    } catch (err) {
+      setPhotoError(
+        err instanceof Error ? err.message : '사진 촬영에 실패했습니다.'
+      );
+    }
+  };
+
+  const handleSwitchCamera = () => {
+    const nextFacing = facingMode === 'environment' ? 'user' : 'environment';
+    void startCamera(nextFacing);
+  };
+
+  const handleAuthClassPresetChange = (value: string) => {
+    setAuthClassPreset(value);
+    setVerifyError('');
+    if (value === '직접 입력') {
+      setAuthClassRoom('');
+    } else {
+      setAuthClassRoom(value);
+    }
+  };
 
   const handleAuthGroupPresetSelect = (preset: string) => {
     setAuthGroupPreset(preset);
@@ -112,6 +313,10 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
     setVerifyError('');
     setVerifyNotice('');
 
+    if (!authClassRoom.trim()) {
+      setVerifyError('확인할 학급(반)을 선택하거나 입력해 주세요.');
+      return;
+    }
     if (!authGroupName.trim()) {
       setVerifyError('확인할 모둠을 선택하거나 입력해 주세요.');
       return;
@@ -123,8 +328,11 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
 
     setIsVerifying(true);
     try {
+      const targetClass = authClassRoom.trim();
+      const targetGroup = authGroupName.trim();
       const result = await verifyGroupAuthAndFetchObservations(
-        authGroupName.trim(),
+        targetClass,
+        targetGroup,
         authCodeInput.trim(),
         groupCodes,
         observations
@@ -135,12 +343,20 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
         return;
       }
 
-      const targetGroup = authGroupName.trim();
-      setUnlockedGroup(targetGroup);
+      setUnlockedTarget({ classRoom: targetClass, groupName: targetGroup });
       setVerifiedObservations(result.observations);
       setVerifyNotice(result.message);
 
-      // 하단 최종 주제 폼의 모둠 정보도 자연스럽게 동기화
+      // 하단 최종 주제 폼의 학급·모둠 정보 동기화
+      if (
+        (CLASS_ROOM_PRESETS as readonly string[]).includes(targetClass) &&
+        targetClass !== '직접 입력'
+      ) {
+        setFormClassPreset(targetClass);
+      } else {
+        setFormClassPreset('직접 입력');
+      }
+
       if (
         (GROUP_NAME_PRESETS as readonly string[]).includes(targetGroup) &&
         targetGroup !== '직접 입력'
@@ -149,21 +365,44 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
       } else {
         setFormGroupPreset('직접 입력');
       }
-      setForm((prev) => ({
-        ...prev,
-        groupName: targetGroup,
-      }));
+
+      setForm((prev) => {
+        baselineFormRef.current = {
+          ...baselineFormRef.current,
+          classRoom: targetClass,
+          groupName: targetGroup,
+        };
+        return {
+          ...prev,
+          classRoom: targetClass,
+          groupName: targetGroup,
+        };
+      });
     } finally {
       setIsVerifying(false);
     }
   };
 
   const handleLockGroup = () => {
-    setUnlockedGroup(null);
+    setUnlockedTarget(null);
     setVerifiedObservations([]);
     setAuthCodeInput('');
     setVerifyError('');
     setVerifyNotice('');
+    setIsLesson1PickerOpen(false);
+    setSelectedLesson1ObsId('');
+  };
+
+  const handleFormClassPresetChange = (value: string) => {
+    setFormClassPreset(value);
+    if (value === '직접 입력') {
+      setForm((prev) => ({ ...prev, classRoom: '' }));
+    } else {
+      setForm((prev) => ({ ...prev, classRoom: value }));
+    }
+    if (errors.classRoom) {
+      setErrors((prev) => ({ ...prev, classRoom: '' }));
+    }
   };
 
   const handleFormGroupPresetSelect = (preset: string) => {
@@ -183,12 +422,16 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
       ? `${obs.locationCategory === '직접 입력' ? '' : obs.locationCategory + ' · '}${obs.locationDetail}`
       : obs.locationCategory;
 
+    setAdoptedSensorIdea(obs.sensorIdea.trim());
+    if (obs.photoDataUrl) {
+      setSelectedLesson1ObsId(obs.id);
+    }
+
     setForm((prev) => ({
       ...prev,
       selectedLocation: locationText,
       referencePhotoDataUrl: obs.photoDataUrl || prev.referencePhotoDataUrl,
       selectionReason: prev.selectionReason || obs.wasteCause,
-      controlConditionDraft: prev.controlConditionDraft || obs.sensorIdea,
     }));
 
     setErrors((prev) => {
@@ -200,11 +443,47 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
     topicFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const handleSelectLesson1Photo = (obsId: string) => {
+    setSelectedLesson1ObsId(obsId);
+    if (!obsId) return;
+
+    const chosen = verifiedObservationsWithPhotos.find(
+      (obs) => obs.id === obsId
+    );
+    if (!chosen) return;
+
+    stopCameraStream();
+    setPhotoError('');
+
+    const locationText = chosen.locationDetail
+      ? `${chosen.locationCategory === '직접 입력' ? '' : chosen.locationCategory + ' · '}${chosen.locationDetail}`
+      : chosen.locationCategory;
+
+    if (chosen.sensorIdea.trim()) {
+      setAdoptedSensorIdea(chosen.sensorIdea.trim());
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      referencePhotoDataUrl: chosen.photoDataUrl,
+      selectedLocation: prev.selectedLocation.trim()
+        ? prev.selectedLocation
+        : locationText,
+      selectionReason: prev.selectionReason || chosen.wasteCause,
+    }));
+
+    if (!form.selectedLocation.trim() && errors.selectedLocation) {
+      setErrors((prev) => ({ ...prev, selectedLocation: '' }));
+    }
+  };
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setPhotoError('');
+    setCameraFallbackAvailable(false);
+    stopCameraStream();
     setIsProcessingPhoto(true);
     try {
       const compressed = await compressImageFile(file);
@@ -212,6 +491,8 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
         ...prev,
         referencePhotoDataUrl: compressed.dataUrl,
       }));
+      setSelectedLesson1ObsId('');
+      setIsLesson1PickerOpen(false);
     } catch (err) {
       setPhotoError(
         err instanceof Error ? err.message : '사진을 처리하지 못했습니다.'
@@ -221,20 +502,23 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+      if (nativeCaptureInputRef.current) {
+        nativeCaptureInputRef.current.value = '';
+      }
     }
   };
 
   const validate = (): boolean => {
     const nextErrors: Record<string, string> = {};
 
-    if (!form.classInfo.trim()) {
-      nextErrors.classInfo = '학년·반을 입력해 주세요. (예: 1학년 2반)';
+    if (!form.classRoom.trim()) {
+      nextErrors.classRoom = '학급(반)을 선택하거나 입력해 주세요.';
     }
     if (!form.groupName.trim()) {
       nextErrors.groupName = '모둠 이름을 선택하거나 입력해 주세요.';
     }
     if (!form.groupMembers.trim()) {
-      nextErrors.groupMembers = '모둠원 이름을 입력해 주세요.';
+      nextErrors.groupMembers = '함께 정한 모둠원 이름을 입력해 주세요.';
     }
     if (!form.selectedLocation.trim()) {
       nextErrors.selectedLocation = '모둠이 해결할 학교 공간을 적어 주세요.';
@@ -248,7 +532,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
     }
     if (!form.selectionReason.trim()) {
       nextErrors.selectionReason =
-        '이 주제를 선정한 이유(원인과 해결 필요성)를 적어 주세요.';
+        '이 주제를 선정한 이유(원인과 자동화가 필요한 까닭)를 적어 주세요.';
     }
 
     setErrors(nextErrors);
@@ -259,10 +543,21 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
     e.preventDefault();
     if (!validate()) return;
 
+    const whenText = form.controlConditionWhen.trim();
+    const thenText = form.controlConditionThen.trim();
+    const combinedDraft =
+      whenText && thenText
+        ? `만약 ${whenText} → ${thenText}`
+        : whenText
+          ? `만약 ${whenText}`
+          : thenText
+            ? thenText
+            : form.controlConditionDraft.trim();
+
     setIsSubmitting(true);
     try {
       const cleaned: GroupTopicInput = {
-        classInfo: form.classInfo.trim(),
+        classRoom: form.classRoom.trim(),
         groupName: form.groupName.trim(),
         groupMembers: form.groupMembers.trim(),
         selectedLocation: form.selectedLocation.trim(),
@@ -270,19 +565,34 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
         projectTitle: form.projectTitle.trim(),
         coreQuestion: form.coreQuestion.trim(),
         selectionReason: form.selectionReason.trim(),
-        controlConditionDraft: form.controlConditionDraft.trim(),
+        controlConditionWhen: whenText,
+        controlConditionThen: thenText,
+        controlConditionDraft: combinedDraft,
       };
 
       const result = await submitGroupTopic(cleaned);
       setSubmitFeedback(result);
-      onTopicSubmitted(result);
 
-      setForm((prev) => ({
-        ...INITIAL_TOPIC_FORM,
-        classInfo: prev.classInfo,
-        groupName: prev.groupName,
-        groupMembers: prev.groupMembers,
-      }));
+      if (result.failed) {
+        return;
+      }
+
+      onTopicSubmitted(result);
+      setAdoptedSensorIdea('');
+      setIsLesson1PickerOpen(false);
+      setSelectedLesson1ObsId('');
+      stopCameraStream();
+
+      setForm((prev) => {
+        const nextBaseline: GroupTopicInput = {
+          ...INITIAL_TOPIC_FORM,
+          classRoom: prev.classRoom,
+          groupName: prev.groupName,
+          groupMembers: prev.groupMembers,
+        };
+        baselineFormRef.current = nextBaseline;
+        return nextBaseline;
+      });
       setErrors({});
     } finally {
       setIsSubmitting(false);
@@ -342,7 +652,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
             </h2>
           </div>
 
-          {unlockedGroup && (
+          {unlockedTarget && (
             <button
               type="button"
               onClick={handleLockGroup}
@@ -354,46 +664,83 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
           )}
         </div>
 
-        {!unlockedGroup ? (
+        {!unlockedTarget ? (
           <form onSubmit={handleVerifySubmit} noValidate className="space-y-4">
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-slate-900">
-                1. 확인할 모둠 선택
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {GROUP_NAME_PRESETS.map((preset) => {
-                  const selected = authGroupPreset === preset;
-                  return (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => handleAuthGroupPresetSelect(preset)}
-                      aria-pressed={selected}
-                      className={`min-h-[44px] rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
-                        selected
-                          ? 'border-emerald-700 bg-emerald-700 text-white'
-                          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      {preset}
-                    </button>
-                  );
-                })}
+            <div className="grid gap-4 sm:grid-cols-12">
+              <div className="space-y-1.5 sm:col-span-4">
+                <label
+                  htmlFor="auth-class-room"
+                  className="block text-sm font-semibold text-slate-900"
+                >
+                  1. 학급 (반) 선택
+                </label>
+                <select
+                  id="auth-class-room"
+                  value={authClassPreset}
+                  onChange={(e) => handleAuthClassPresetChange(e.target.value)}
+                  className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                >
+                  {CLASS_ROOM_PRESETS.map((room) => (
+                    <option key={room} value={room}>
+                      {room}
+                    </option>
+                  ))}
+                </select>
+                {authClassPreset === '직접 입력' && (
+                  <input
+                    type="text"
+                    value={authClassRoom}
+                    onChange={(e) => {
+                      setAuthClassRoom(e.target.value);
+                      setVerifyError('');
+                    }}
+                    placeholder="예: 1학년 13반"
+                    aria-label="확인할 학급 직접 입력"
+                    maxLength={20}
+                    className="mt-1.5 min-h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
+                  />
+                )}
               </div>
-              {authGroupPreset === '직접 입력' && (
-                <input
-                  type="text"
-                  value={authGroupName}
-                  onChange={(e) => {
-                    setAuthGroupName(e.target.value);
-                    setVerifyError('');
-                  }}
-                  placeholder="예: 7모둠"
-                  aria-label="확인할 모둠 이름 직접 입력"
-                  maxLength={30}
-                  className="min-h-[46px] w-full max-w-xs rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
-                />
-              )}
+
+              <div className="space-y-2 sm:col-span-8">
+                <p className="text-sm font-semibold text-slate-900">
+                  2. 확인할 모둠 선택
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {GROUP_NAME_PRESETS.map((preset) => {
+                    const selected = authGroupPreset === preset;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleAuthGroupPresetSelect(preset)}
+                        aria-pressed={selected}
+                        className={`min-h-[44px] rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
+                          selected
+                            ? 'border-emerald-700 bg-emerald-700 text-white'
+                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    );
+                  })}
+                </div>
+                {authGroupPreset === '직접 입력' && (
+                  <input
+                    type="text"
+                    value={authGroupName}
+                    onChange={(e) => {
+                      setAuthGroupName(e.target.value);
+                      setVerifyError('');
+                    }}
+                    placeholder="예: 10모둠"
+                    aria-label="확인할 모둠 이름 직접 입력"
+                    maxLength={30}
+                    className="min-h-[46px] w-full max-w-xs rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                  />
+                )}
+              </div>
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -402,7 +749,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                   htmlFor="group-auth-code"
                   className="block text-sm font-semibold text-slate-900"
                 >
-                  2. 교사에게 받은 모둠 인증코드
+                  3. 교사에게 받은 모둠 인증코드
                 </label>
                 <div className="relative">
                   <KeyRound
@@ -441,37 +788,29 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
             {verifyError && (
               <div
                 role="alert"
-                className="flex flex-col gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-900 sm:flex-row sm:items-center sm:justify-between"
+                className="rounded-lg border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-900"
               >
                 <p className="font-medium leading-relaxed">{verifyError}</p>
-                {groupCodes.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={onGoToTeacherCodes}
-                    className="inline-flex min-h-[38px] items-center gap-1 self-start rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-900 hover:bg-rose-100/60 whitespace-nowrap shrink-0 sm:self-auto"
-                  >
-                    <span>교사 화면에서 인증코드 만들기</span>
-                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                )}
               </div>
             )}
 
             <p className="text-xs leading-relaxed text-slate-500">
-              교사가 「교사 확인 → 모둠 인증코드 관리」에서 만든 인증코드를
-              입력하면, 해당 모둠 소속 학생들이 1차시에 제출한 개인별 일지와
-              현장 사진을 이 구역에서 바로 모아볼 수 있습니다.
+              선생님께 안내받은 우리 반·우리 모둠 인증코드를 입력하면, 1차시에
+              모둠원들이 제출한 개인 관찰 일지와 현장 사진을 이 구역에서 바로
+              모아볼 수 있습니다.
             </p>
           </form>
         ) : (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Check
                   className="h-4 w-4 shrink-0 text-emerald-700"
                   aria-hidden="true"
                 />
-                <span className="font-semibold">{unlockedGroup} 인증됨</span>
+                <span className="font-semibold">
+                  {unlockedTarget.classRoom} · {unlockedTarget.groupName} 인증됨
+                </span>
                 <span aria-hidden="true">·</span>
                 <span className="tabular-nums">
                   1차시 개인 관찰 일지 {verifiedObservations.length}건
@@ -485,12 +824,13 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
             {verifiedObservations.length === 0 ? (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-600">
                 <p className="font-semibold text-slate-900">
-                  {unlockedGroup}의 1차시 개인 관찰 일지가 아직 없습니다
+                  {unlockedTarget.classRoom} {unlockedTarget.groupName}의 1차시
+                  개인 관찰 일지가 아직 없습니다
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                  1차시 화면에서 소속 모둠을 「{unlockedGroup}」으로 선택해
-                  개인 기록을 작성하면 이곳에 모여 보입니다. 아래에서 직접 공간과
-                  주제를 입력할 수도 있습니다.
+                  1차시 화면에서 학급 「{unlockedTarget.classRoom}」, 소속 모둠
+                  「{unlockedTarget.groupName}」으로 개인 기록을 작성하면 이곳에
+                  모여 보입니다. 아래에서 직접 공간과 주제를 입력할 수도 있습니다.
                 </p>
               </div>
             ) : (
@@ -508,7 +848,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                       <div className="space-y-3">
                         <div className="flex flex-wrap items-center justify-between gap-1 text-xs text-slate-500">
                           <span className="font-semibold text-slate-900">
-                            {obs.classInfo} {obs.authorName}
+                            {obs.classRoom} · {obs.classInfo} {obs.authorName}
                           </span>
                           <span className="font-medium text-emerald-800">
                             {displayLocation}
@@ -531,7 +871,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                               onClick={() =>
                                 setEnlargedPhoto({
                                   src: obs.photoDataUrl,
-                                  title: `${obs.groupName} · ${obs.authorName} (${displayLocation})`,
+                                  title: `${obs.classRoom} · ${obs.groupName} · ${obs.authorName} (${displayLocation})`,
                                 })
                               }
                               className="absolute right-2 bottom-2 inline-flex min-h-[34px] items-center gap-1 rounded-md bg-slate-900/80 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-900"
@@ -611,15 +951,15 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 <span className="font-semibold text-slate-900">
                   2. 최종 주제 1가지 확정:
                 </span>{' '}
-                모둠이 함께 만들 에너지 절약 시스템의 이름과 핵심 질문을
-                정합니다.
+                단순한 절약 구호나 경고문이 아니라, 센서와 코딩으로 스스로
+                해결하는 시스템 주제 1가지를 정합니다.
               </li>
               <li>
                 <span className="font-semibold text-slate-900">
                   3. 자연어 제어 조건 작성:
                 </span>{' '}
-                경고문이 아니라 센서 조건(“만약 ~라면 ~한다”)으로 해결 흐름을
-                적습니다.
+                「언제(센서 입력)」와 「어떻게(작동 출력)」를 나누어 알고리즘
+                흐름을 구체적으로 적습니다.
               </li>
             </ol>
           </div>
@@ -640,35 +980,63 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
               </p>
             </div>
 
+            <div className="mt-4 flex items-start gap-2.5 rounded-lg border border-slate-200 bg-slate-50 p-3.5 text-xs leading-relaxed text-slate-700">
+              <Info
+                className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700"
+                aria-hidden="true"
+              />
+              <p>
+                <span className="font-semibold text-slate-900">
+                  모둠당 대표 1명만 작성해 주세요.
+                </span>{' '}
+                같은 학급·모둠 이름으로 다시 제출하면 이전 내용 대신 최신
+                내용으로 덮어써져 모둠당 1가지 최종 주제로 정리됩니다.
+              </p>
+            </div>
+
             <form onSubmit={handleSubmit} noValidate className="mt-5 space-y-5">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label
-                    htmlFor="topic-class-info"
+                    htmlFor="topic-class-room"
                     className="block text-sm font-semibold text-slate-900"
                   >
-                    학년 · 반
+                    학급 (반)
                   </label>
-                  <input
-                    id="topic-class-info"
-                    type="text"
-                    value={form.classInfo}
-                    onChange={(e) => {
-                      setForm({ ...form, classInfo: e.target.value });
-                      if (errors.classInfo) {
-                        setErrors((prev) => ({ ...prev, classInfo: '' }));
-                      }
-                    }}
-                    placeholder="예: 1학년 2반"
-                    maxLength={40}
-                    className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
-                  />
-                  {errors.classInfo && (
+                  <select
+                    id="topic-class-room"
+                    value={formClassPreset}
+                    onChange={(e) => handleFormClassPresetChange(e.target.value)}
+                    className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                  >
+                    {CLASS_ROOM_PRESETS.map((room) => (
+                      <option key={room} value={room}>
+                        {room}
+                      </option>
+                    ))}
+                  </select>
+                  {formClassPreset === '직접 입력' && (
+                    <input
+                      type="text"
+                      value={form.classRoom}
+                      onChange={(e) => {
+                        setForm({ ...form, classRoom: e.target.value });
+                        if (errors.classRoom) {
+                          setErrors((prev) => ({ ...prev, classRoom: '' }));
+                        }
+                      }}
+                      placeholder="예: 1학년 13반"
+                      aria-label="학급 직접 입력"
+                      maxLength={20}
+                      className="mt-1.5 min-h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
+                    />
+                  )}
+                  {errors.classRoom && (
                     <p
                       role="alert"
                       className="text-xs font-medium text-rose-700"
                     >
-                      {errors.classInfo}
+                      {errors.classRoom}
                     </p>
                   )}
                 </div>
@@ -739,7 +1107,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                         setErrors((prev) => ({ ...prev, groupName: '' }));
                       }
                     }}
-                    placeholder="예: 7모둠"
+                    placeholder="예: 10모둠"
                     aria-label="모둠 이름 직접 입력"
                     maxLength={30}
                     className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
@@ -752,32 +1120,13 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 )}
               </fieldset>
 
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 <label
                   htmlFor="selected-location"
                   className="block text-sm font-semibold text-slate-900"
                 >
                   2. 최종 선정한 학교 공간
                 </label>
-                <input
-                  id="selected-location"
-                  type="text"
-                  value={form.selectedLocation}
-                  onChange={(e) => {
-                    setForm({ ...form, selectedLocation: e.target.value });
-                    if (errors.selectedLocation) {
-                      setErrors((prev) => ({ ...prev, selectedLocation: '' }));
-                    }
-                  }}
-                  placeholder="예: 빈 교실 · 2층 1학년 2반 교실"
-                  maxLength={80}
-                  className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
-                />
-                {errors.selectedLocation && (
-                  <p role="alert" className="text-xs font-medium text-rose-700">
-                    {errors.selectedLocation}
-                  </p>
-                )}
 
                 <input
                   ref={fileInputRef}
@@ -787,56 +1136,273 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                   className="sr-only"
                 />
 
-                {form.referencePhotoDataUrl ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2 text-xs text-slate-600">
+                <input
+                  ref={nativeCaptureInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handlePhotoUpload}
+                  className="sr-only"
+                />
+
+                <div className="grid gap-3 md:grid-cols-12 md:items-stretch">
+                  <div className="flex flex-col space-y-1.5 md:col-span-7">
+                    <textarea
+                      id="selected-location"
+                      rows={4}
+                      value={form.selectedLocation}
+                      onChange={(e) => {
+                        setForm({ ...form, selectedLocation: e.target.value });
+                        if (errors.selectedLocation) {
+                          setErrors((prev) => ({
+                            ...prev,
+                            selectedLocation: '',
+                          }));
+                        }
+                      }}
+                      placeholder={
+                        '사진에 대한 설명을 작성해주세요.\n예: 빈 교실, 2층 1학년 2반 교실'
+                      }
+                      maxLength={200}
+                      className="min-h-[120px] w-full flex-1 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                    />
+                    {errors.selectedLocation && (
+                      <p
+                        role="alert"
+                        className="text-xs font-medium text-rose-700"
+                      >
+                        {errors.selectedLocation}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col justify-between gap-2.5 md:col-span-5">
+                    <button
+                      type="button"
+                      disabled={isRequestingCamera || isProcessingPhoto}
+                      onClick={() => void startCamera(facingMode)}
+                      className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg border border-emerald-700 bg-emerald-700 px-3.5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 whitespace-nowrap"
+                    >
+                      <Camera className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <span>
+                        {isRequestingCamera
+                          ? '카메라 권한 확인 중...'
+                          : '현장 사진 직접 올리기'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setIsLesson1PickerOpen((prev) => !prev)
+                      }
+                      aria-expanded={isLesson1PickerOpen}
+                      className={`inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm font-semibold transition-colors whitespace-nowrap ${
+                        isLesson1PickerOpen
+                          ? 'border-emerald-700 bg-emerald-50 text-emerald-900'
+                          : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Images
+                        className="h-4 w-4 shrink-0 text-emerald-700"
+                        aria-hidden="true"
+                      />
+                      <span>1차시 기록에서 선택하기</span>
+                      <ChevronDown
+                        className={`h-4 w-4 shrink-0 transition-transform ${
+                          isLesson1PickerOpen ? 'rotate-180' : ''
+                        }`}
+                        aria-hidden="true"
+                      />
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isRequestingCamera || isProcessingPhoto}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60 whitespace-nowrap"
+                    >
+                      <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>
+                        {isProcessingPhoto
+                          ? '사진 불러오는 중...'
+                          : '저장된 사진 파일에서 올리기'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 1차시 기록에서 선택하기 드롭다운 */}
+                {isLesson1PickerOpen && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3.5 space-y-2">
+                    {!unlockedTarget ? (
+                      <p className="text-xs leading-relaxed text-slate-600">
+                        먼저 위{' '}
+                        <span className="font-semibold text-slate-900">
+                          「1단계 · 모둠 인증 후 1차시 개인 일지 확인」
+                        </span>
+                        에서 학급·모둠과 인증코드를 입력해 1차시 기록을 불러와
+                        주세요.
+                      </p>
+                    ) : verifiedObservationsWithPhotos.length === 0 ? (
+                      <p className="text-xs leading-relaxed text-slate-600">
+                        불러온 {unlockedTarget.classRoom}{' '}
+                        {unlockedTarget.groupName}의 1차시 기록 중 첨부된
+                        사진이 없습니다. 오른쪽{' '}
+                        <span className="font-semibold text-slate-900">
+                          [현장 사진 직접 올리기]
+                        </span>
+                        로 촬영하거나 사진 파일에서 올려 주세요.
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <label
+                          htmlFor="lesson1-photo-select"
+                          className="block text-xs font-semibold text-slate-800"
+                        >
+                          1단계에서 불러온 {unlockedTarget.classRoom}{' '}
+                          {unlockedTarget.groupName} 사진 선택 (
+                          {verifiedObservationsWithPhotos.length}장)
+                        </label>
+                        <select
+                          id="lesson1-photo-select"
+                          value={selectedLesson1ObsId}
+                          onChange={(e) =>
+                            handleSelectLesson1Photo(e.target.value)
+                          }
+                          className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                        >
+                          <option value="">
+                            -- 1차시 모둠 사진 중 하나를 선택하세요 --
+                          </option>
+                          {verifiedObservationsWithPhotos.map((obs) => {
+                            const locText = obs.locationDetail
+                              ? `${obs.locationCategory === '직접 입력' ? '' : obs.locationCategory + ' · '}${obs.locationDetail}`
+                              : obs.locationCategory;
+                            const captionSuffix = obs.photoCaption
+                              ? ` (${obs.photoCaption})`
+                              : '';
+                            return (
+                              <option key={obs.id} value={obs.id}>
+                                {obs.authorName} · {locText}
+                                {captionSuffix}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 실시간 카메라 촬영 화면 */}
+                {isCameraOpen && (
+                  <div className="space-y-3 rounded-xl border border-slate-300 bg-slate-950 p-3">
+                    <div className="overflow-hidden rounded-lg bg-black">
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="mx-auto max-h-72 w-full object-contain"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCapturePhoto}
+                          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 whitespace-nowrap"
+                        >
+                          <Camera className="h-4 w-4" aria-hidden="true" />
+                          <span>지금 촬영하기</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSwitchCamera}
+                          className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700 whitespace-nowrap"
+                        >
+                          <RefreshCw
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                          />
+                          <span>카메라 전환</span>
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={stopCameraStream}
+                        className="inline-flex min-h-[44px] items-center justify-center gap-1 rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 whitespace-nowrap"
+                      >
+                        <X className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>닫기</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 선택한 / 촬영한 사진 미리보기 */}
+                {!isCameraOpen && form.referencePhotoDataUrl && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
                       <span className="font-semibold text-slate-800">
                         선택한 현장 기준 사진 (후속 구현 시 활용)
                       </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setForm((prev) => ({
-                            ...prev,
-                            referencePhotoDataUrl: '',
-                          }))
-                        }
-                        className="inline-flex min-h-[36px] items-center gap-1 rounded-md px-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"
-                      >
-                        <X className="h-3.5 w-3.5" aria-hidden="true" />
-                        <span>제거</span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => void startCamera(facingMode)}
+                          className="inline-flex min-h-[36px] items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          <Camera className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>다시 촬영</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm((prev) => ({
+                              ...prev,
+                              referencePhotoDataUrl: '',
+                            }));
+                            setSelectedLesson1ObsId('');
+                          }}
+                          className="inline-flex min-h-[36px] items-center gap-1 rounded-md px-2 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                        >
+                          <X className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>제거</span>
+                        </button>
+                      </div>
                     </div>
                     <img
                       src={form.referencePhotoDataUrl}
                       alt="모둠이 선정한 현장 기준 사진"
                       referrerPolicy="no-referrer"
-                      className="max-h-52 w-full rounded-md border border-slate-200 object-contain bg-white"
+                      className="max-h-56 w-full rounded-md border border-slate-200 bg-white object-contain"
                     />
+                    <p className="text-xs text-slate-600">
+                      사진에 친구 얼굴이나 이름표 등 개인정보가 나오지 않았는지
+                      확인해 주세요.
+                    </p>
                   </div>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={isProcessingPhoto}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                  >
-                    <Camera
-                      className="h-4 w-4 text-emerald-700"
-                      aria-hidden="true"
-                    />
-                    <span>
-                      {isProcessingPhoto
-                        ? '사진을 불러오는 중...'
-                        : '현장 기준 사진 직접 올리기 (또는 위 1차시 기록에서 선택)'}
-                    </span>
-                  </button>
                 )}
 
                 {photoError && (
-                  <p role="alert" className="text-xs font-medium text-rose-700">
-                    {photoError}
-                  </p>
+                  <div
+                    role="alert"
+                    className="space-y-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900"
+                  >
+                    <p className="font-medium leading-relaxed">{photoError}</p>
+                    {cameraFallbackAvailable && (
+                      <button
+                        type="button"
+                        onClick={() => nativeCaptureInputRef.current?.click()}
+                        className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-900 hover:bg-rose-100/50"
+                      >
+                        <Camera className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>기기 카메라 앱으로 찍기</span>
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -901,7 +1467,8 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                   htmlFor="selection-reason"
                   className="block text-sm font-semibold text-slate-900"
                 >
-                  5. 주제를 선정한 이유 (원인과 해결 필요성)
+                  5. 주제를 선정한 이유 (원인·문제점과 기존 경고문 대신 센서
+                  자동화가 필요한 이유)
                 </label>
                 <textarea
                   id="selection-reason"
@@ -913,7 +1480,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                       setErrors((prev) => ({ ...prev, selectionReason: '' }));
                     }
                   }}
-                  placeholder="예: 우리 반 이동 수업 시간마다 불이 켜져 있어 낭비가 잦고, 경고문만 붙여두면 잘 지켜지지 않기 때문"
+                  placeholder="예: 이동 수업 시간마다 불이 켜져 있어 낭비가 잦고, 스위치 옆 종이 경고문만 붙여두면 잘 보지 않아 센서로 자동 제어할 필요가 있기 때문"
                   maxLength={300}
                   className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
                 />
@@ -924,27 +1491,71 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 )}
               </div>
 
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="control-draft"
-                  className="block text-sm font-semibold text-slate-900"
-                >
-                  6. 센서 제어 조건 초안 (자연어: 만약 ~라면 ~한다)
-                </label>
-                <textarea
-                  id="control-draft"
-                  rows={2}
-                  value={form.controlConditionDraft}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      controlConditionDraft: e.target.value,
-                    })
-                  }
-                  placeholder="예: 만약 조도 센서가 밝은 상태이고 인체감지 센서에 3분 동안 움직임이 없으면, LED(조명)를 끈다."
-                  maxLength={300}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
-                />
+              {/* 6. 구조화된 자연어 센서 제어 조건 초안 */}
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-slate-900">
+                    6. 센서 제어 조건 초안 (자연어 알고리즘: 만약 ~라면 →
+                    ~한다)
+                  </p>
+                  <p className="text-xs text-slate-600">
+                    센서가 감지하는 「조건」과 장치가 움직이는 「동작」을 나누어
+                    작성하면 다음 차시 코딩 설계로 바로 이어집니다.
+                  </p>
+                  {adoptedSensorIdea && (
+                    <p className="pt-1 text-xs font-medium text-emerald-800">
+                      가져온 1차시 센서 아이디어 참고: {adoptedSensorIdea}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="control-when"
+                      className="block text-xs font-semibold text-slate-800"
+                    >
+                      언제 · 센서 입력 조건 (만약 ~라면)
+                    </label>
+                    <textarea
+                      id="control-when"
+                      rows={2}
+                      value={form.controlConditionWhen}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          controlConditionWhen: e.target.value,
+                        })
+                      }
+                      placeholder="예: 조도 센서가 밝고, 인체감지 센서에 3분 동안 움직임이 없다면"
+                      maxLength={180}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="control-then"
+                      className="block text-xs font-semibold text-slate-800"
+                    >
+                      어떻게 · 작동 출력 (~한다)
+                    </label>
+                    <textarea
+                      id="control-then"
+                      rows={2}
+                      value={form.controlConditionThen}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          controlConditionThen: e.target.value,
+                        })
+                      }
+                      placeholder="예: LED(조명)를 끄거나 서보모터로 스위치를 내려 절전한다"
+                      maxLength={180}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                    />
+                  </div>
+                </div>
               </div>
 
               <button
@@ -963,42 +1574,48 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
 
             {submitFeedback && (
               <div
-                role="status"
+                role={submitFeedback.failed ? 'alert' : 'status'}
                 className={`mt-5 rounded-xl border p-4 text-sm ${
-                  submitFeedback.savedToServer
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
-                    : 'border-amber-300 bg-amber-50 text-amber-950'
+                  submitFeedback.failed
+                    ? 'border-rose-300 bg-rose-50 text-rose-950'
+                    : submitFeedback.savedToServer
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+                      : 'border-amber-300 bg-amber-50 text-amber-950'
                 }`}
               >
                 <div className="flex items-start gap-2.5">
-                  {submitFeedback.savedToServer ? (
+                  {submitFeedback.savedToServer && !submitFeedback.failed ? (
                     <Check
                       className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700"
                       aria-hidden="true"
                     />
                   ) : (
                     <AlertTriangle
-                      className="mt-0.5 h-4 w-4 shrink-0 text-amber-700"
+                      className={`mt-0.5 h-4 w-4 shrink-0 ${
+                        submitFeedback.failed
+                          ? 'text-rose-700'
+                          : 'text-amber-700'
+                      }`}
                       aria-hidden="true"
                     />
                   )}
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <p className="font-semibold">
-                      {submitFeedback.savedToServer
-                        ? '모둠 프로젝트 주제가 서버에 저장되었습니다'
-                        : '입력 완료 (저장 준비 중 · 임시 미리보기)'}
+                      {submitFeedback.failed
+                        ? '저장에 실패했습니다 · 다시 확인해 주세요'
+                        : submitFeedback.savedToServer
+                          ? '모둠 프로젝트 주제가 서버에 저장되었습니다'
+                          : '서버에 저장되지 않음 (저장 준비 중 · 임시 미리보기)'}
                     </p>
                     <p className="leading-relaxed opacity-90">
                       {submitFeedback.message}
                     </p>
-                    <button
-                      type="button"
-                      onClick={onGoToTeacherView}
-                      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-current/20 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 hover:bg-slate-50"
-                    >
-                      <span>교사 확인 화면에서 선정된 모둠 주제 보기</span>
-                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
+                    {!submitFeedback.failed && (
+                      <p className="text-xs opacity-85">
+                        모둠별 1가지 최종 주제로 정리되었으며, 다음 차시에
+                        선생님과 함께 피지컬 컴퓨팅 설계로 이어집니다.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1026,10 +1643,8 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500">
                         <span className="font-semibold text-emerald-800">
-                          {topic.groupName}
+                          {topic.classRoom} · {topic.groupName}
                         </span>
-                        <span aria-hidden="true">·</span>
-                        <span>{topic.classInfo}</span>
                         <span aria-hidden="true">·</span>
                         <span>{topic.selectedLocation}</span>
                         <span aria-hidden="true">·</span>
@@ -1044,6 +1659,11 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                       <p className="text-xs text-slate-600">
                         {topic.coreQuestion}
                       </p>
+                      {topic.controlConditionDraft && (
+                        <p className="text-xs text-slate-500">
+                          제어 흐름: {topic.controlConditionDraft}
+                        </p>
+                      )}
                     </div>
                     {topic.syncState === 'preview-only' && (
                       <button

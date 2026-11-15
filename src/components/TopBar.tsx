@@ -1,12 +1,13 @@
 import React from 'react';
 
-export type AppView = 'lesson1' | 'lesson2' | 'teacher';
+export type AppView = 'lesson0' | 'lesson1' | 'lesson2' | 'teacher';
 
 interface TopBarProps {
   activeView: AppView;
   onSelectView: (view: AppView) => void;
   observationCount: number;
   topicCount: number;
+  showCounts?: boolean;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -14,13 +15,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   onSelectView,
   observationCount,
   topicCount,
+  showCounts = false,
 }) => {
   return (
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-4 py-3.5 sm:px-6">
         <button
           type="button"
-          onClick={() => onSelectView('lesson1')}
+          onClick={() => onSelectView('lesson0')}
           className="text-left text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
         >
           스마트 에코 스쿨
@@ -50,7 +52,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
-            2차시 · 모둠별 프로젝트 주제 선정 ({topicCount})
+            2차시 · 모둠별 프로젝트 주제 선정
+            {showCounts ? ` (${topicCount})` : ''}
           </button>
           <button
             type="button"
@@ -61,7 +64,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
-            교사 확인 ({observationCount + topicCount})
+            교사 확인{showCounts ? ` (${observationCount + topicCount})` : ''}
           </button>
         </nav>
 
@@ -112,7 +115,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 : 'text-slate-700 hover:bg-white'
             }`}
           >
-            교사 확인 ({observationCount + topicCount})
+            교사 확인{showCounts ? ` (${observationCount + topicCount})` : ''}
           </button>
         </div>
       </div>

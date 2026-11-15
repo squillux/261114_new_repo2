@@ -3,9 +3,14 @@ import {
   AlertTriangle,
   Check,
   Clock,
+  Eye,
+  EyeOff,
   FileText,
   KeyRound,
+  Lock,
+  LogOut,
   Maximize2,
+  RefreshCw,
   Search,
   Sparkles,
   Trash2,
@@ -14,13 +19,18 @@ import {
   X,
 } from 'lucide-react';
 import {
+  CLASS_ROOM_PRESETS,
   GROUP_NAME_PRESETS,
   type GroupAuthCode,
   type GroupTopicRecord,
   type ObservationRecord,
   type StorageConnectionStatus,
 } from '../types/observation';
-import { saveGroupCode, type ApiSaveCodeResult } from '../lib/observationApi';
+import {
+  saveGroupCode,
+  type ApiSaveCodeResult,
+  type ApiTeacherLoginResult,
+} from '../lib/observationApi';
 import { StorageStatusNotice } from './StorageStatusNotice';
 
 export type TeacherStageTab = 'lesson1' | 'lesson2' | 'codes';
@@ -31,16 +41,32 @@ interface TeacherReviewViewProps {
   groupCodes: GroupAuthCode[];
   initialTab?: TeacherStageTab;
   storageStatus: StorageConnectionStatus;
+  statusDetail?: string;
   isCheckingStorage: boolean;
+  isTeacherAuthenticated: boolean;
+  isTeacherAuthConfigured: boolean;
+  isRefreshingData: boolean;
+  onTeacherLogin: (password: string) => Promise<ApiTeacherLoginResult>;
+  onTeacherLogout: () => Promise<void>;
+  onRefreshData: () => Promise<void>;
   onRetryConnection: () => void;
   onClearPreviewRecords: () => void;
+  onDeleteObservation: (id: string) => void;
+  onDeleteTopic: (id: string) => void;
   onGroupCodeSaved: (result: ApiSaveCodeResult) => void;
-  onDeletePreviewGroupCode: (groupName: string) => void;
+  onDeleteGroupCode: (classRoom: string, groupName: string) => void;
   onGoToLesson1: () => void;
   onGoToLesson2: () => void;
 }
 
 type Lesson1DisplayMode = 'by-group' | 'by-individual';
+
+interface GroupBucket {
+  key: string;
+  classRoom: string;
+  groupName: string;
+  items: ObservationRecord[];
+}
 
 export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
   observations,
@@ -48,26 +74,51 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
   groupCodes,
   initialTab = 'lesson1',
   storageStatus,
+  statusDetail,
   isCheckingStorage,
+  isTeacherAuthenticated,
+  isTeacherAuthConfigured,
+  isRefreshingData,
+  onTeacherLogin,
+  onTeacherLogout,
+  onRefreshData,
   onRetryConnection,
   onClearPreviewRecords,
+  onDeleteObservation,
+  onDeleteTopic,
   onGroupCodeSaved,
-  onDeletePreviewGroupCode,
+  onDeleteGroupCode,
   onGoToLesson1,
   onGoToLesson2,
 }) => {
   const [stageTab, setStageTab] = useState<TeacherStageTab>(initialTab);
+  const [teacherPassword, setTeacherPassword] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState('');
   const [displayMode, setDisplayMode] =
     useState<Lesson1DisplayMode>('by-group');
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('all');
   const [locationFilter, setLocationFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showGroupCodesInLesson1, setShowGroupCodesInLesson1] = useState(false);
+  const [confirmDeleteObsId, setConfirmDeleteObsId] = useState<string | null>(
+    null
+  );
+  const [confirmDeleteTopicId, setConfirmDeleteTopicId] = useState<
+    string | null
+  >(null);
+  const [confirmDeleteCodeKey, setConfirmDeleteCodeKey] = useState<
+    string | null
+  >(null);
   const [enlargedPhoto, setEnlargedPhoto] = useState<{
     src: string;
     title: string;
   } | null>(null);
 
   // 모둠 인증코드 관리 상태
+  const [codeClassPreset, setCodeClassPreset] = useState<string>('1학년 1반');
+  const [codeClassRoom, setCodeClassRoom] = useState<string>('1학년 1반');
   const [codeGroupPreset, setCodeGroupPreset] = useState<string>('1모둠');
   const [codeGroupName, setCodeGroupName] = useState<string>('1모둠');
   const [codeValue, setCodeValue] = useState<string>('');
@@ -76,18 +127,41 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
   const [codeSaveFeedback, setCodeSaveFeedback] =
     useState<ApiSaveCodeResult | null>(null);
 
-  const groupBuckets = useMemo(() => {
-    const map = new Map<string, ObservationRecord[]>();
+  const availableClasses = useMemo(() => {
+    const set = new Set<string>();
+    observations.forEach((o) => {
+      const c = o.classRoom?.trim();
+      if (c) set.add(c);
+    });
+    topics.forEach((t) => {
+      const c = t.classRoom?.trim();
+      if (c) set.add(c);
+    });
+    groupCodes.forEach((g) => {
+      const c = g.classRoom?.trim();
+      if (c) set.add(c);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'));
+  }, [observations, topics, groupCodes]);
+
+  const availableGroupNames = useMemo(() => {
+    const map = new Map<string, number>();
     observations.forEach((obs) => {
-      const key = obs.groupName.trim() || '모둠 미지정';
-      const existing = map.get(key) || [];
-      existing.push(obs);
-      map.set(key, existing);
+      const cls = obs.classRoom?.trim() || '학급 미지정';
+      if (selectedClassFilter !== 'all' && cls !== selectedClassFilter) return;
+      const grp = obs.groupName.trim() || '모둠 미지정';
+      map.set(grp, (map.get(grp) || 0) + 1);
+    });
+    topics.forEach((t) => {
+      const cls = t.classRoom?.trim() || '학급 미지정';
+      if (selectedClassFilter !== 'all' && cls !== selectedClassFilter) return;
+      const grp = t.groupName.trim() || '모둠 미지정';
+      if (!map.has(grp)) map.set(grp, 0);
     });
     return Array.from(map.entries()).sort(([a], [b]) =>
       a.localeCompare(b, 'ko')
     );
-  }, [observations]);
+  }, [observations, topics, selectedClassFilter]);
 
   const availableLocations = useMemo(() => {
     const set = new Set<string>();
@@ -100,7 +174,11 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
   const filteredObservations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return observations.filter((item) => {
+      const classKey = item.classRoom?.trim() || '학급 미지정';
       const groupKey = item.groupName.trim() || '모둠 미지정';
+      if (selectedClassFilter !== 'all' && classKey !== selectedClassFilter) {
+        return false;
+      }
       if (selectedGroupFilter !== 'all' && groupKey !== selectedGroupFilter) {
         return false;
       }
@@ -112,6 +190,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
       }
       if (!q) return true;
       const target = [
+        item.classRoom,
         item.classInfo,
         item.authorName,
         item.groupName,
@@ -126,46 +205,78 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
         .toLowerCase();
       return target.includes(q);
     });
-  }, [observations, selectedGroupFilter, locationFilter, searchQuery]);
+  }, [
+    observations,
+    selectedClassFilter,
+    selectedGroupFilter,
+    locationFilter,
+    searchQuery,
+  ]);
 
-  const filteredGroupBuckets = useMemo(() => {
-    const map = new Map<string, ObservationRecord[]>();
+  const filteredGroupBuckets = useMemo<GroupBucket[]>(() => {
+    const map = new Map<string, GroupBucket>();
     filteredObservations.forEach((obs) => {
-      const key = obs.groupName.trim() || '모둠 미지정';
-      const existing = map.get(key) || [];
-      existing.push(obs);
-      map.set(key, existing);
+      const classRoom = obs.classRoom?.trim() || '학급 미지정';
+      const groupName = obs.groupName.trim() || '모둠 미지정';
+      const key = `${classRoom}::${groupName}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.items.push(obs);
+      } else {
+        map.set(key, {
+          key,
+          classRoom,
+          groupName,
+          items: [obs],
+        });
+      }
     });
-    return Array.from(map.entries()).sort(([a], [b]) =>
-      a.localeCompare(b, 'ko')
-    );
+    return Array.from(map.values()).sort((a, b) => {
+      const clsCmp = a.classRoom.localeCompare(b.classRoom, 'ko');
+      if (clsCmp !== 0) return clsCmp;
+      return a.groupName.localeCompare(b.groupName, 'ko');
+    });
   }, [filteredObservations]);
+
+  const totalGroupBucketCount = useMemo(() => {
+    const set = new Set<string>();
+    observations.forEach((obs) => {
+      const classRoom = obs.classRoom?.trim() || '학급 미지정';
+      const groupName = obs.groupName.trim() || '모둠 미지정';
+      set.add(`${classRoom}::${groupName}`);
+    });
+    return set.size;
+  }, [observations]);
 
   const filteredTopics = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return topics.filter((topic) => {
-      if (
-        selectedGroupFilter !== 'all' &&
-        topic.groupName.trim() !== selectedGroupFilter
-      ) {
+      const classKey = topic.classRoom?.trim() || '학급 미지정';
+      const groupKey = topic.groupName.trim() || '모둠 미지정';
+      if (selectedClassFilter !== 'all' && classKey !== selectedClassFilter) {
+        return false;
+      }
+      if (selectedGroupFilter !== 'all' && groupKey !== selectedGroupFilter) {
         return false;
       }
       if (!q) return true;
       return [
-        topic.classInfo,
+        topic.classRoom,
         topic.groupName,
         topic.groupMembers,
         topic.selectedLocation,
         topic.projectTitle,
         topic.coreQuestion,
         topic.selectionReason,
+        topic.controlConditionWhen,
+        topic.controlConditionThen,
         topic.controlConditionDraft,
       ]
         .join(' ')
         .toLowerCase()
         .includes(q);
     });
-  }, [topics, selectedGroupFilter, searchQuery]);
+  }, [topics, selectedClassFilter, selectedGroupFilter, searchQuery]);
 
   const stats = useMemo(() => {
     const photoCount = observations.filter((r) =>
@@ -173,11 +284,11 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
     ).length;
     return {
       observations: observations.length,
-      groupsWithObs: groupBuckets.length,
+      groupsWithObs: totalGroupBucketCount,
       photos: photoCount,
       topics: topics.length,
     };
-  }, [observations, groupBuckets.length, topics.length]);
+  }, [observations, totalGroupBucketCount, topics.length]);
 
   const hasPreviewOnlyRecords =
     observations.some((r) => r.syncState === 'preview-only') ||
@@ -197,6 +308,28 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
     }
   };
 
+  const prefillExistingCode = (targetClass: string, targetGroup: string) => {
+    const existing = groupCodes.find(
+      (c) =>
+        c.classRoom.trim() === targetClass.trim() &&
+        c.groupName.trim() === targetGroup.trim()
+    );
+    if (existing) {
+      setCodeValue(existing.code);
+    }
+  };
+
+  const handleCodeClassChange = (value: string) => {
+    setCodeClassPreset(value);
+    setCodeFormError('');
+    if (value === '직접 입력') {
+      setCodeClassRoom('');
+    } else {
+      setCodeClassRoom(value);
+      prefillExistingCode(value, codeGroupName);
+    }
+  };
+
   const handleCodePresetSelect = (preset: string) => {
     setCodeGroupPreset(preset);
     setCodeFormError('');
@@ -204,10 +337,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
       setCodeGroupName('');
     } else {
       setCodeGroupName(preset);
-      const existing = groupCodes.find((c) => c.groupName === preset);
-      if (existing) {
-        setCodeValue(existing.code);
-      }
+      prefillExistingCode(codeClassRoom, preset);
     }
   };
 
@@ -221,6 +351,10 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
     e.preventDefault();
     setCodeFormError('');
 
+    if (!codeClassRoom.trim()) {
+      setCodeFormError('학급(반)을 선택하거나 입력해 주세요.');
+      return;
+    }
     if (!codeGroupName.trim()) {
       setCodeFormError('모둠 이름을 선택하거나 입력해 주세요.');
       return;
@@ -232,13 +366,117 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
 
     setIsSavingCode(true);
     try {
-      const result = await saveGroupCode(codeGroupName.trim(), codeValue.trim());
+      const result = await saveGroupCode(
+        codeClassRoom.trim(),
+        codeGroupName.trim(),
+        codeValue.trim()
+      );
       setCodeSaveFeedback(result);
       onGroupCodeSaved(result);
-      setCodeValue('');
+      if (!result.failed) {
+        setCodeValue('');
+      }
     } finally {
       setIsSavingCode(false);
     }
+  };
+
+  const handleTeacherLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    if (!teacherPassword.trim()) {
+      setLoginError('교사용 비밀번호를 입력해 주세요.');
+      return;
+    }
+
+    setIsLoggingIn(true);
+    try {
+      const res = await onTeacherLogin(teacherPassword);
+      if (res.ok && res.authenticated) {
+        setTeacherPassword('');
+        setLoginError('');
+      } else {
+        setLoginError(res.message);
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const renderObsDeleteControl = (obsId: string) => {
+    if (confirmDeleteObsId === obsId) {
+      return (
+        <div className="inline-flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              onDeleteObservation(obsId);
+              setConfirmDeleteObsId(null);
+            }}
+            className="min-h-[34px] rounded-md bg-rose-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-rose-800 whitespace-nowrap"
+          >
+            삭제 확인
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmDeleteObsId(null)}
+            className="min-h-[34px] rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+          >
+            취소
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => setConfirmDeleteObsId(obsId)}
+        aria-label="이 관찰 일지 삭제"
+        className="inline-flex min-h-[34px] items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-500 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 whitespace-nowrap"
+      >
+        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+        <span>삭제</span>
+      </button>
+    );
+  };
+
+  const renderTopicDeleteControl = (topicId: string) => {
+    if (confirmDeleteTopicId === topicId) {
+      return (
+        <div className="inline-flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              onDeleteTopic(topicId);
+              setConfirmDeleteTopicId(null);
+            }}
+            className="min-h-[34px] rounded-md bg-rose-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-rose-800 whitespace-nowrap"
+          >
+            삭제 확인
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmDeleteTopicId(null)}
+            className="min-h-[34px] rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+          >
+            취소
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={() => setConfirmDeleteTopicId(topicId)}
+        aria-label="이 모둠 주제 삭제"
+        className="inline-flex min-h-[34px] items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-500 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 whitespace-nowrap"
+      >
+        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+        <span>삭제</span>
+      </button>
+    );
   };
 
   return (
@@ -252,24 +490,194 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
             수업 활동 결과 모아보기
           </h1>
         </div>
-        {hasPreviewOnlyRecords && (
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <button
             type="button"
-            onClick={onClearPreviewRecords}
-            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 self-start rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0 sm:self-auto"
+            onClick={() => void onRefreshData()}
+            disabled={isRefreshingData || isCheckingStorage}
+            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 whitespace-nowrap shrink-0"
           >
-            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>임시 미리보기 비우기</span>
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isRefreshingData ? 'animate-spin' : ''}`}
+              aria-hidden="true"
+            />
+            <span>{isRefreshingData ? '새로고침 중...' : '응답 새로고침'}</span>
           </button>
-        )}
+
+          {storageStatus === 'connected' && isTeacherAuthenticated && (
+            <button
+              type="button"
+              onClick={() => void onTeacherLogout()}
+              className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0"
+            >
+              <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>로그아웃</span>
+            </button>
+          )}
+
+          {hasPreviewOnlyRecords && (
+            <button
+              type="button"
+              onClick={onClearPreviewRecords}
+              className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>임시 미리보기 비우기</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <StorageStatusNotice
         status={storageStatus}
+        statusDetail={statusDetail}
         onRetryCheck={onRetryConnection}
         isChecking={isCheckingStorage}
         context="teacher"
       />
+
+      {storageStatus === 'not-connected' && (
+        <section
+          aria-labelledby="teacher-preview-login-title"
+          className="rounded-xl border border-slate-200 bg-white p-5 space-y-3"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2
+                id="teacher-preview-login-title"
+                className="text-sm font-bold text-slate-900"
+              >
+                교사 서버 로그인 (Cloudflare 배포 후 활성화)
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-600">
+                Cloudflare Workers 배포 후에는 <code className="font-mono">TEACHER_PASSWORD</code> Secret으로 로그인해야 학생 응답과 모둠 코드를 조회할 수 있습니다.
+              </p>
+            </div>
+            <span className="text-xs font-medium text-amber-800">
+              현재 화면은 서버 미연결 임시 미리보기
+            </span>
+          </div>
+
+          <form
+            onSubmit={handleTeacherLoginSubmit}
+            className="flex flex-col gap-2 sm:flex-row sm:items-center"
+          >
+            <label htmlFor="teacher-password-preview" className="sr-only">
+              교사 비밀번호
+            </label>
+            <input
+              id="teacher-password-preview"
+              type="password"
+              value={teacherPassword}
+              onChange={(e) => {
+                setTeacherPassword(e.target.value);
+                setLoginError('');
+              }}
+              placeholder="교사 비밀번호 입력"
+              autoComplete="current-password"
+              className="min-h-[42px] flex-1 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="inline-flex min-h-[42px] items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-60 whitespace-nowrap"
+              >
+                <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{isLoggingIn ? '확인 중...' : '로그인'}</span>
+              </button>
+              <button
+                type="button"
+                disabled
+                title="로그인 후 사용할 수 있습니다"
+                className="inline-flex min-h-[42px] items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-400 whitespace-nowrap cursor-not-allowed"
+              >
+                <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>로그아웃</span>
+              </button>
+            </div>
+          </form>
+
+          {loginError && (
+            <p role="alert" className="text-xs font-medium text-rose-700">
+              {loginError}
+            </p>
+          )}
+        </section>
+      )}
+
+      {storageStatus === 'connected' && !isTeacherAuthenticated ? (
+        <section
+          aria-labelledby="teacher-login-title"
+          className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 space-y-5"
+        >
+          <div className="space-y-2 text-center">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700">
+              <Lock className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <h2
+              id="teacher-login-title"
+              className="text-lg font-bold text-slate-900"
+            >
+              교사 인증 후 응답 확인하기
+            </h2>
+            <p className="text-sm leading-relaxed text-slate-600">
+              학생들의 개인 관찰 일지와 사진, 모둠 인증코드는 보호된 교사
+              세션에서만 조회할 수 있습니다.
+            </p>
+          </div>
+
+          {!isTeacherAuthConfigured && (
+            <div
+              role="alert"
+              className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-xs leading-relaxed text-amber-950"
+            >
+              서버에 <code className="font-mono font-semibold">TEACHER_PASSWORD</code>{' '}
+              Secret이 아직 등록되지 않아 로그인할 수 없습니다. Cloudflare Worker
+              Secret을 설정한 뒤 다시 시도해 주세요.
+            </div>
+          )}
+
+          <form onSubmit={handleTeacherLoginSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="teacher-password-input"
+                className="block text-sm font-semibold text-slate-900"
+              >
+                교사 비밀번호
+              </label>
+              <input
+                id="teacher-password-input"
+                type="password"
+                value={teacherPassword}
+                onChange={(e) => {
+                  setTeacherPassword(e.target.value);
+                  setLoginError('');
+                }}
+                placeholder="TEACHER_PASSWORD에 설정한 비밀번호"
+                autoComplete="current-password"
+                className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+              />
+            </div>
+
+            {loginError && (
+              <p role="alert" className="text-xs font-medium text-rose-700">
+                {loginError}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoggingIn || !isTeacherAuthConfigured}
+              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+            >
+              <Lock className="h-4 w-4" aria-hidden="true" />
+              <span>{isLoggingIn ? '비밀번호 확인 중...' : '로그인'}</span>
+            </button>
+          </form>
+        </section>
+      ) : (
+        <>
 
       {/* 요약 지표 */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -342,39 +750,82 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
           </div>
 
           {stageTab === 'lesson1' && (
-            <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 self-start lg:self-auto">
-              <button
-                type="button"
-                onClick={() => setDisplayMode('by-group')}
-                className={`inline-flex min-h-[38px] items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                  displayMode === 'by-group'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Users className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>모둠별로 결과 보기</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setDisplayMode('by-individual')}
-                className={`inline-flex min-h-[38px] items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                  displayMode === 'by-individual'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <User className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>개인별 목록 보기</span>
-              </button>
+            <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+              <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setDisplayMode('by-group')}
+                  className={`inline-flex min-h-[38px] items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                    displayMode === 'by-group'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Users className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>모둠별로 결과 보기</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisplayMode('by-individual')}
+                  className={`inline-flex min-h-[38px] items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                    displayMode === 'by-individual'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <User className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>개인별 목록 보기</span>
+                </button>
+              </div>
+
+              {displayMode === 'by-group' && (
+                <button
+                  type="button"
+                  onClick={() => setShowGroupCodesInLesson1((prev) => !prev)}
+                  aria-pressed={showGroupCodesInLesson1}
+                  className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0"
+                >
+                  {showGroupCodesInLesson1 ? (
+                    <>
+                      <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>모둠 인증코드 숨기기</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>모둠 인증코드 보기</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
         </div>
 
-        {/* 모둠/공간/검색 필터 (1·2차시 결과 조회 탭일 때 표시) */}
+        {/* 학급/모둠/공간/검색 필터 (1·2차시 결과 조회 탭일 때 표시) */}
         {stageTab !== 'codes' && (
           <div className="flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
+              <label className="sr-only" htmlFor="teacher-class-filter">
+                학급 필터
+              </label>
+              <select
+                id="teacher-class-filter"
+                value={selectedClassFilter}
+                onChange={(e) => {
+                  setSelectedClassFilter(e.target.value);
+                  setSelectedGroupFilter('all');
+                }}
+                className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 focus:border-emerald-700 focus:outline-none"
+              >
+                <option value="all">전체 학급</option>
+                {availableClasses.map((cls) => (
+                  <option key={cls} value={cls}>
+                    {cls}
+                  </option>
+                ))}
+              </select>
+
               <button
                 type="button"
                 onClick={() => setSelectedGroupFilter('all')}
@@ -386,7 +837,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
               >
                 전체 모둠
               </button>
-              {groupBuckets.map(([groupName, items]) => (
+              {availableGroupNames.map(([groupName, count]) => (
                 <button
                   key={groupName}
                   type="button"
@@ -397,7 +848,8 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                       : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  {groupName} ({items.length})
+                  {groupName}
+                  {stageTab === 'lesson1' ? ` (${count})` : ''}
                 </button>
               ))}
 
@@ -432,7 +884,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="모둠, 이름, 장소, 내용 검색"
+                placeholder="학급, 모둠, 이름, 장소 검색"
                 aria-label="결과 검색"
                 className="min-h-[40px] w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
               />
@@ -456,8 +908,8 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
             </h2>
             <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-slate-600">
               {observations.length === 0
-                ? '학생들이 개인 관찰 일지와 현장 사진을 제출하면 이곳에서 모둠별로 묶어 한눈에 보여줄 수 있습니다.'
-                : '모둠 필터나 검색어를 바꾸어 다시 확인해 보세요.'}
+                ? '학생들이 개인 관찰 일지와 현장 사진을 제출하면 이곳에서 학급·모둠별로 묶어 한눈에 보여줄 수 있습니다.'
+                : '학급·모둠 필터나 검색어를 바꾸어 다시 확인해 보세요.'}
             </p>
             {observations.length === 0 && (
               <button
@@ -471,12 +923,17 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
           </div>
         ) : displayMode === 'by-group' ? (
           <div className="space-y-6">
-            {filteredGroupBuckets.map(([groupName, items]) => {
-              const codeObj = groupCodes.find((c) => c.groupName === groupName);
+            {filteredGroupBuckets.map((bucket) => {
+              const codeObj = groupCodes.find(
+                (c) =>
+                  c.classRoom.trim() === bucket.classRoom &&
+                  c.groupName.trim() === bucket.groupName
+              );
+
               return (
                 <section
-                  key={groupName}
-                  aria-label={`${groupName} 관찰 결과`}
+                  key={bucket.key}
+                  aria-label={`${bucket.classRoom} ${bucket.groupName} 관찰 결과`}
                   className="rounded-xl border border-slate-200 bg-white p-5 space-y-4"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
@@ -486,37 +943,55 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                         aria-hidden="true"
                       />
                       <h2 className="text-lg font-bold text-slate-900">
-                        {groupName}
+                        {bucket.classRoom} · {bucket.groupName}
                       </h2>
                       <span className="text-xs font-medium text-slate-500 tabular-nums">
-                        · 개인 관찰 {items.length}건 · 사진{' '}
-                        {items.filter((i) => Boolean(i.photoDataUrl)).length}장
+                        · 개인 관찰 {bucket.items.length}건 · 사진{' '}
+                        {
+                          bucket.items.filter((i) => Boolean(i.photoDataUrl))
+                            .length
+                        }
+                        장
                       </span>
-                      {codeObj && (
-                        <span className="font-mono text-xs font-semibold text-emerald-800">
-                          · 인증코드: {codeObj.code}
-                        </span>
-                      )}
+                      {codeObj &&
+                        (showGroupCodesInLesson1 ? (
+                          <span className="font-mono text-xs font-semibold text-emerald-800">
+                            · 인증코드: {codeObj.code}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-500">
+                            · 인증코드 등록됨 (화면 공유 보호 중)
+                          </span>
+                        ))}
                     </div>
                     <div className="flex items-center gap-2">
                       {!codeObj && (
                         <button
                           type="button"
                           onClick={() => {
-                            handleCodePresetSelect(
-                              (GROUP_NAME_PRESETS as readonly string[]).includes(
-                                groupName
-                              )
-                                ? groupName
-                                : '직접 입력'
-                            );
                             if (
-                              !(
-                                GROUP_NAME_PRESETS as readonly string[]
-                              ).includes(groupName)
+                              (
+                                CLASS_ROOM_PRESETS as readonly string[]
+                              ).includes(bucket.classRoom) &&
+                              bucket.classRoom !== '직접 입력'
                             ) {
-                              setCodeGroupName(groupName);
+                              setCodeClassPreset(bucket.classRoom);
+                            } else {
+                              setCodeClassPreset('직접 입력');
                             }
+                            setCodeClassRoom(bucket.classRoom);
+
+                            if (
+                              (
+                                GROUP_NAME_PRESETS as readonly string[]
+                              ).includes(bucket.groupName) &&
+                              bucket.groupName !== '직접 입력'
+                            ) {
+                              setCodeGroupPreset(bucket.groupName);
+                            } else {
+                              setCodeGroupPreset('직접 입력');
+                            }
+                            setCodeGroupName(bucket.groupName);
                             setStageTab('codes');
                           }}
                           className="min-h-[38px] rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
@@ -535,7 +1010,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
-                    {items.map((item) => {
+                    {bucket.items.map((item) => {
                       const displayLocation = item.locationDetail
                         ? `${item.locationCategory === '직접 입력' ? '' : item.locationCategory + ' · '}${item.locationDetail}`
                         : item.locationCategory;
@@ -555,10 +1030,13 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                                 {displayLocation}
                               </span>
                             </div>
-                            <span className="inline-flex items-center gap-1 tabular-nums">
-                              <Clock className="h-3 w-3" aria-hidden="true" />
-                              {formatDateTime(item.createdAt)}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1 tabular-nums">
+                                <Clock className="h-3 w-3" aria-hidden="true" />
+                                {formatDateTime(item.createdAt)}
+                              </span>
+                              {renderObsDeleteControl(item.id)}
+                            </div>
                           </div>
 
                           {item.photoDataUrl && (
@@ -578,7 +1056,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                                   onClick={() =>
                                     setEnlargedPhoto({
                                       src: item.photoDataUrl,
-                                      title: `${groupName} · ${item.authorName} (${displayLocation})`,
+                                      title: `${bucket.classRoom} · ${bucket.groupName} · ${item.authorName} (${displayLocation})`,
                                     })
                                   }
                                   className="absolute right-2 bottom-2 inline-flex min-h-[36px] items-center gap-1 rounded-md bg-slate-900/80 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-900"
@@ -649,7 +1127,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
                       <span className="font-semibold text-emerald-800">
-                        {item.groupName || '모둠 미지정'}
+                        {item.classRoom} · {item.groupName || '모둠 미지정'}
                       </span>
                       <span aria-hidden="true">·</span>
                       <span className="font-semibold text-slate-900">
@@ -659,7 +1137,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                       <span>{displayLocation}</span>
                     </div>
 
-                    <div className="flex items-center gap-2 text-xs text-slate-500 tabular-nums">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 tabular-nums">
                       <span className="inline-flex items-center gap-1">
                         <Clock className="h-3.5 w-3.5" aria-hidden="true" />
                         {formatDateTime(item.createdAt)}
@@ -676,6 +1154,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                           ? '서버 저장됨'
                           : '임시 미리보기 (저장 준비 중)'}
                       </span>
+                      {renderObsDeleteControl(item.id)}
                     </div>
                   </div>
 
@@ -697,15 +1176,12 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                             onClick={() =>
                               setEnlargedPhoto({
                                 src: item.photoDataUrl,
-                                title: `${item.groupName} · ${item.authorName} (${displayLocation})`,
+                                title: `${item.classRoom} · ${item.groupName} · ${item.authorName} (${displayLocation})`,
                               })
                             }
                             className="absolute right-2 bottom-2 inline-flex min-h-[34px] items-center gap-1 rounded-md bg-slate-900/80 px-2 py-1 text-xs font-medium text-white hover:bg-slate-900"
                           >
-                            <Maximize2
-                              className="h-3 w-3"
-                              aria-hidden="true"
-                            />
+                            <Maximize2 className="h-3 w-3" aria-hidden="true" />
                             <span>크게</span>
                           </button>
                         </div>
@@ -788,11 +1264,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                   <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-600">
                     <span className="text-sm font-bold text-emerald-800">
-                      {topic.groupName}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span className="font-medium text-slate-800">
-                      {topic.classInfo}
+                      {topic.classRoom} · {topic.groupName}
                     </span>
                     <span aria-hidden="true">·</span>
                     <span>모둠원: {topic.groupMembers}</span>
@@ -800,7 +1272,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                     <span>선정 공간: {topic.selectedLocation}</span>
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs text-slate-500 tabular-nums">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 tabular-nums">
                     <span>{formatDateTime(topic.createdAt)}</span>
                     <span aria-hidden="true">·</span>
                     <span
@@ -814,6 +1286,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                         ? '서버 저장됨'
                         : '임시 미리보기 (저장 준비 중)'}
                     </span>
+                    {renderTopicDeleteControl(topic.id)}
                   </div>
                 </div>
 
@@ -832,7 +1305,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                           onClick={() =>
                             setEnlargedPhoto({
                               src: topic.referencePhotoDataUrl,
-                              title: `${topic.groupName} · ${topic.projectTitle}`,
+                              title: `${topic.classRoom} · ${topic.groupName} · ${topic.projectTitle}`,
                             })
                           }
                           className="absolute right-2 bottom-2 inline-flex min-h-[34px] items-center gap-1 rounded-md bg-slate-900/80 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-900"
@@ -872,20 +1345,44 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div>
                         <p className="text-xs font-semibold text-slate-500">
-                          선정 이유
+                          선정 이유 (원인·자동화 필요성)
                         </p>
                         <p className="mt-0.5 text-sm leading-relaxed text-slate-700">
                           {topic.selectionReason}
                         </p>
                       </div>
-                      {topic.controlConditionDraft && (
+                      {(topic.controlConditionWhen ||
+                        topic.controlConditionThen ||
+                        topic.controlConditionDraft) && (
                         <div>
                           <p className="text-xs font-semibold text-slate-500">
                             제어 조건 초안 (자연어)
                           </p>
-                          <p className="mt-0.5 text-sm leading-relaxed text-slate-800">
-                            {topic.controlConditionDraft}
-                          </p>
+                          {topic.controlConditionWhen ||
+                          topic.controlConditionThen ? (
+                            <div className="mt-0.5 space-y-1 text-sm text-slate-800">
+                              {topic.controlConditionWhen && (
+                                <p>
+                                  <span className="font-semibold text-slate-700">
+                                    만약:{' '}
+                                  </span>
+                                  {topic.controlConditionWhen}
+                                </p>
+                              )}
+                              {topic.controlConditionThen && (
+                                <p>
+                                  <span className="font-semibold text-slate-700">
+                                    작동:{' '}
+                                  </span>
+                                  {topic.controlConditionThen}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="mt-0.5 text-sm leading-relaxed text-slate-800">
+                              {topic.controlConditionDraft}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -914,9 +1411,9 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                 모둠별 인증코드 만들기
               </h2>
               <p className="mt-1 text-sm text-slate-600">
-                교사가 직접 만든 인증코드를 각 모둠에 알려주면, 학생들이 2차시
-                페이지에서 자기 모둠의 1차시 관찰 일지와 사진을 열어볼 수
-                있습니다.
+                교사가 직접 학급과 모둠을 지정해 인증코드를 만들면, 학생들이
+                2차시 페이지에서 자기 반·자기 모둠의 1차시 관찰 일지와 사진을
+                열어볼 수 있습니다.
               </p>
             </div>
 
@@ -925,9 +1422,44 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
               noValidate
               className="space-y-4"
             >
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="code-class-room"
+                  className="block text-sm font-semibold text-slate-900"
+                >
+                  1. 학급 (반) 선택
+                </label>
+                <select
+                  id="code-class-room"
+                  value={codeClassPreset}
+                  onChange={(e) => handleCodeClassChange(e.target.value)}
+                  className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                >
+                  {CLASS_ROOM_PRESETS.map((room) => (
+                    <option key={room} value={room}>
+                      {room}
+                    </option>
+                  ))}
+                </select>
+                {codeClassPreset === '직접 입력' && (
+                  <input
+                    type="text"
+                    value={codeClassRoom}
+                    onChange={(e) => {
+                      setCodeClassRoom(e.target.value);
+                      setCodeFormError('');
+                    }}
+                    placeholder="예: 1학년 13반"
+                    aria-label="인증코드를 만들 학급 직접 입력"
+                    maxLength={20}
+                    className="mt-1.5 min-h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
+                  />
+                )}
+              </div>
+
               <fieldset className="space-y-2">
                 <legend className="text-sm font-semibold text-slate-900">
-                  1. 모둠 선택
+                  2. 모둠 선택
                 </legend>
                 <div className="flex flex-wrap gap-2">
                   {GROUP_NAME_PRESETS.map((preset) => {
@@ -957,7 +1489,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                       setCodeGroupName(e.target.value);
                       setCodeFormError('');
                     }}
-                    placeholder="예: 7모둠"
+                    placeholder="예: 10모둠"
                     aria-label="인증코드를 만들 모둠 이름"
                     maxLength={30}
                     className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
@@ -971,7 +1503,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                     htmlFor="teacher-code-input"
                     className="text-sm font-semibold text-slate-900"
                   >
-                    2. 인증코드 입력
+                    3. 인증코드 입력
                   </label>
                   <button
                     type="button"
@@ -1016,11 +1548,13 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
 
             {codeSaveFeedback && (
               <div
-                role="status"
+                role={codeSaveFeedback.failed ? 'alert' : 'status'}
                 className={`rounded-xl border p-3.5 text-xs leading-relaxed ${
-                  codeSaveFeedback.savedToServer
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
-                    : 'border-amber-300 bg-amber-50 text-amber-950'
+                  codeSaveFeedback.failed
+                    ? 'border-rose-300 bg-rose-50 text-rose-950'
+                    : codeSaveFeedback.savedToServer
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+                      : 'border-amber-300 bg-amber-50 text-amber-950'
                 }`}
               >
                 <div className="flex items-start gap-2">
@@ -1031,7 +1565,11 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                     />
                   ) : (
                     <AlertTriangle
-                      className="mt-0.5 h-4 w-4 shrink-0 text-amber-700"
+                      className={`mt-0.5 h-4 w-4 shrink-0 ${
+                        codeSaveFeedback.failed
+                          ? 'text-rose-700'
+                          : 'text-amber-700'
+                      }`}
                       aria-hidden="true"
                     />
                   )}
@@ -1054,7 +1592,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   등록된 모둠별 인증코드 목록
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  학생이 2차시 페이지에서 아래 모둠과 인증코드를 입력하면
+                  학생이 2차시 페이지에서 아래 학급·모둠과 인증코드를 입력하면
                   1차시 기록을 볼 수 있습니다.
                 </p>
               </div>
@@ -1073,25 +1611,27 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   아직 등록된 모둠 인증코드가 없습니다
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                  왼쪽에서 모둠을 고르고 인증코드를 입력해 등록해 주세요.
+                  왼쪽에서 학급과 모둠을 고르고 인증코드를 입력해 등록해 주세요.
                 </p>
               </div>
             ) : (
               <ul className="divide-y divide-slate-100">
                 {groupCodes.map((entry) => {
                   const obsCount = observations.filter(
-                    (o) => o.groupName.trim() === entry.groupName.trim()
+                    (o) =>
+                      o.classRoom.trim() === entry.classRoom.trim() &&
+                      o.groupName.trim() === entry.groupName.trim()
                   ).length;
 
                   return (
                     <li
-                      key={entry.groupName}
+                      key={`${entry.classRoom}::${entry.groupName}`}
                       className="flex flex-wrap items-center justify-between gap-3 py-3.5"
                     >
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-x-2.5 text-sm">
                           <span className="font-bold text-slate-900">
-                            {entry.groupName}
+                            {entry.classRoom} · {entry.groupName}
                           </span>
                           <span aria-hidden="true" className="text-slate-300">
                             ·
@@ -1117,6 +1657,18 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                           onClick={() => {
                             if (
                               (
+                                CLASS_ROOM_PRESETS as readonly string[]
+                              ).includes(entry.classRoom) &&
+                              entry.classRoom !== '직접 입력'
+                            ) {
+                              setCodeClassPreset(entry.classRoom);
+                            } else {
+                              setCodeClassPreset('직접 입력');
+                            }
+                            setCodeClassRoom(entry.classRoom);
+
+                            if (
+                              (
                                 GROUP_NAME_PRESETS as readonly string[]
                               ).includes(entry.groupName) &&
                               entry.groupName !== '직접 입력'
@@ -1133,18 +1685,47 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                         >
                           수정
                         </button>
-                        {entry.syncState === 'preview-only' && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onDeletePreviewGroupCode(entry.groupName)
+                        {(isTeacherAuthenticated ||
+                          entry.syncState === 'preview-only') &&
+                          (() => {
+                            const codeKey = `${entry.classRoom}::${entry.groupName}`;
+                            if (confirmDeleteCodeKey === codeKey) {
+                              return (
+                                <div className="inline-flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onDeleteGroupCode(
+                                        entry.classRoom,
+                                        entry.groupName
+                                      );
+                                      setConfirmDeleteCodeKey(null);
+                                    }}
+                                    className="min-h-[34px] rounded-md bg-rose-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-rose-800 whitespace-nowrap"
+                                  >
+                                    삭제 확인
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteCodeKey(null)}
+                                    className="min-h-[34px] rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+                                  >
+                                    취소
+                                  </button>
+                                </div>
+                              );
                             }
-                            aria-label={`${entry.groupName} 인증코드 삭제`}
-                            className="flex min-h-[38px] min-w-[38px] items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-500 hover:bg-rose-50 hover:text-rose-700"
-                          >
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                          </button>
-                        )}
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteCodeKey(codeKey)}
+                                aria-label={`${entry.classRoom} ${entry.groupName} 인증코드 삭제`}
+                                className="flex min-h-[38px] min-w-[38px] items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-500 hover:bg-rose-50 hover:text-rose-700"
+                              >
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                              </button>
+                            );
+                          })()}
                       </div>
                     </li>
                   );
@@ -1153,6 +1734,8 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
             )}
           </section>
         </div>
+      )}
+        </>
       )}
 
       {/* 현장 사진 크게 보기 모달 */}

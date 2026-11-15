@@ -12,12 +12,12 @@ export const LessonGuidePanel: React.FC = () => {
         <p className="text-xs font-medium text-slate-500">
           중학교 1학년 정보(기술 융합) · 1단계(1차시) · 읽걷쓰AI 프로젝트
         </p>
-        <h2
+        <h1
           id="lesson-guide-title"
-          className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl"
+          className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl"
         >
-          학교 공간 에너지 낭비 관찰 일지 안내
-        </h2>
+          학교 공간 에너지 낭비 관찰 일지
+        </h1>
         <p className="text-sm leading-relaxed text-slate-600 sm:text-base">
           먼저 개인별로 학교를 걸어 다니며 에너지가 낭비되는 공간의 사진과
           관찰 내용을 기록합니다. 개인 작성이 모두 끝나면 선생님이 모둠별로

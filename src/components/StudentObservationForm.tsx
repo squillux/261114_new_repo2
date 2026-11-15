@@ -12,8 +12,10 @@ import {
   X,
 } from 'lucide-react';
 import {
+  CLASS_ROOM_PRESETS,
   GROUP_NAME_PRESETS,
   SCHOOL_LOCATION_PRESETS,
+  SENSOR_HINT_ITEMS,
   type ObservationInput,
   type ObservationRecord,
 } from '../types/observation';
@@ -27,11 +29,12 @@ interface StudentObservationFormProps {
   onObservationSubmitted: (result: ApiSubmitObservationResult) => void;
   sessionRecords: ObservationRecord[];
   onDeletePreviewRecord: (id: string) => void;
-  onGoToTeacherView: () => void;
   onGoToLesson2: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }
 
 const INITIAL_FORM: ObservationInput = {
+  classRoom: '1학년 1반',
   classInfo: '',
   authorName: '',
   groupName: '1모둠',
@@ -49,10 +52,11 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
   onObservationSubmitted,
   sessionRecords,
   onDeletePreviewRecord,
-  onGoToTeacherView,
   onGoToLesson2,
+  onDirtyChange,
 }) => {
   const [form, setForm] = useState<ObservationInput>(INITIAL_FORM);
+  const [classRoomPreset, setClassRoomPreset] = useState<string>('1학년 1반');
   const [groupPreset, setGroupPreset] = useState<string>('1모둠');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [photoError, setPhotoError] = useState<string>('');
@@ -67,10 +71,35 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
   const [submitFeedback, setSubmitFeedback] =
     useState<ApiSubmitObservationResult | null>(null);
 
+  const baselineFormRef = useRef<ObservationInput>(INITIAL_FORM);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const nativeCaptureInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    const base = baselineFormRef.current;
+    const isDirty =
+      form.classRoom !== base.classRoom ||
+      form.classInfo !== base.classInfo ||
+      form.authorName !== base.authorName ||
+      form.groupName !== base.groupName ||
+      form.locationCategory !== base.locationCategory ||
+      form.locationDetail !== base.locationDetail ||
+      form.wasteScene !== base.wasteScene ||
+      form.wasteCause !== base.wasteCause ||
+      form.sensorIdea !== base.sensorIdea ||
+      form.photoDataUrl !== base.photoDataUrl ||
+      form.photoCaption !== base.photoCaption ||
+      form.privacyConfirmed !== base.privacyConfirmed;
+    onDirtyChange?.(isDirty);
+  }, [form, onDirtyChange]);
+
+  useEffect(() => {
+    return () => {
+      onDirtyChange?.(false);
+    };
+  }, [onDirtyChange]);
 
   const stopCameraStream = useCallback(() => {
     if (streamRef.current) {
@@ -129,7 +158,6 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
           audio: false,
         });
       } catch (firstErr) {
-        // Retry with generic video constraint if ideal facingMode fails on some webcams
         if (
           firstErr instanceof DOMException &&
           (firstErr.name === 'OverconstrainedError' ||
@@ -213,6 +241,44 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
     void startCamera(nextFacing);
   };
 
+  const handleClassRoomChange = (value: string) => {
+    setClassRoomPreset(value);
+    if (value === '직접 입력') {
+      setForm((prev) => ({ ...prev, classRoom: '' }));
+    } else {
+      setForm((prev) => ({ ...prev, classRoom: value }));
+    }
+    if (errors.classRoom) {
+      setErrors((prev) => ({ ...prev, classRoom: '' }));
+    }
+  };
+
+  const handleStudentIdChange = (rawValue: string) => {
+    let nextClassRoom = form.classRoom;
+    let nextPreset = classRoomPreset;
+
+    // 5자리 학번(예: 10101 -> 1학년 1반, 11201 -> 1학년 12반) 입력 시 반 자동 맞춤
+    const trimmed = rawValue.trim();
+    if (/^1(0[1-9]|1[0-2])\d{2}$/.test(trimmed) && classRoomPreset !== '직접 입력') {
+      const classNum = Number(trimmed.slice(1, 3));
+      const matched = `1학년 ${classNum}반`;
+      if ((CLASS_ROOM_PRESETS as readonly string[]).includes(matched)) {
+        nextClassRoom = matched;
+        nextPreset = matched;
+      }
+    }
+
+    setClassRoomPreset(nextPreset);
+    setForm((prev) => ({
+      ...prev,
+      classInfo: rawValue,
+      classRoom: nextClassRoom,
+    }));
+    if (errors.classInfo) {
+      setErrors((prev) => ({ ...prev, classInfo: '' }));
+    }
+  };
+
   const handleGroupPresetSelect = (preset: string) => {
     setGroupPreset(preset);
     if (preset === '직접 입력') {
@@ -223,6 +289,17 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
     if (errors.groupName) {
       setErrors((prev) => ({ ...prev, groupName: '' }));
     }
+  };
+
+  const handleAppendSensorHint = (hint: string) => {
+    setForm((prev) => {
+      const current = prev.sensorIdea.trim();
+      if (current.includes(hint)) return prev;
+      return {
+        ...prev,
+        sensorIdea: current ? `${current}, ${hint}` : `${hint} 활용: `,
+      };
+    });
   };
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -266,6 +343,10 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
 
   const validate = (): boolean => {
     const nextErrors: Record<string, string> = {};
+
+    if (!form.classRoom.trim()) {
+      nextErrors.classRoom = '학급(반)을 선택하거나 입력해 주세요.';
+    }
 
     if (!form.classInfo.trim()) {
       nextErrors.classInfo =
@@ -313,6 +394,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
     try {
       const cleaned: ObservationInput = {
         ...form,
+        classRoom: form.classRoom.trim(),
         classInfo: form.classInfo.trim(),
         authorName: form.authorName.trim(),
         groupName: form.groupName.trim(),
@@ -325,14 +407,24 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
 
       const result = await submitObservation(cleaned);
       setSubmitFeedback(result);
+
+      if (result.failed) {
+        return;
+      }
+
       onObservationSubmitted(result);
 
-      setForm((prev) => ({
-        ...INITIAL_FORM,
-        classInfo: prev.classInfo,
-        authorName: prev.authorName,
-        groupName: prev.groupName,
-      }));
+      setForm((prev) => {
+        const nextBaseline: ObservationInput = {
+          ...INITIAL_FORM,
+          classRoom: prev.classRoom,
+          classInfo: prev.classInfo,
+          authorName: prev.authorName,
+          groupName: prev.groupName,
+        };
+        baselineFormRef.current = nextBaseline;
+        return nextBaseline;
+      });
       setErrors({});
       setPhotoError('');
     } finally {
@@ -369,14 +461,56 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
             개인 관찰 일지 작성하기
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            내 학번·이름과 소속 모둠을 적고, 발견한 에너지 낭비 공간의 사진과
-            내용을 기록하세요.
+            내 학급·학번·이름과 소속 모둠을 적고, 발견한 에너지 낭비 공간의
+            사진과 내용을 기록하세요.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} noValidate className="mt-5 space-y-5">
-          {/* 1. 학생 및 소속 모둠 정보 */}
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* 1. 학급, 학번, 이름 */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="class-room-select"
+                className="block text-sm font-semibold text-slate-900"
+              >
+                학급 (반)
+              </label>
+              <select
+                id="class-room-select"
+                value={classRoomPreset}
+                onChange={(e) => handleClassRoomChange(e.target.value)}
+                className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+              >
+                {CLASS_ROOM_PRESETS.map((room) => (
+                  <option key={room} value={room}>
+                    {room}
+                  </option>
+                ))}
+              </select>
+              {classRoomPreset === '직접 입력' && (
+                <input
+                  type="text"
+                  value={form.classRoom}
+                  onChange={(e) => {
+                    setForm({ ...form, classRoom: e.target.value });
+                    if (errors.classRoom) {
+                      setErrors((prev) => ({ ...prev, classRoom: '' }));
+                    }
+                  }}
+                  placeholder="예: 1학년 13반"
+                  aria-label="학급 직접 입력"
+                  maxLength={20}
+                  className="mt-1.5 min-h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
+                />
+              )}
+              {errors.classRoom && (
+                <p role="alert" className="text-xs font-medium text-rose-700">
+                  {errors.classRoom}
+                </p>
+              )}
+            </div>
+
             <div className="space-y-1.5">
               <label
                 htmlFor="class-info"
@@ -389,12 +523,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                 type="text"
                 inputMode="numeric"
                 value={form.classInfo}
-                onChange={(e) => {
-                  setForm({ ...form, classInfo: e.target.value });
-                  if (errors.classInfo) {
-                    setErrors((prev) => ({ ...prev, classInfo: '' }));
-                  }
-                }}
+                onChange={(e) => handleStudentIdChange(e.target.value)}
                 placeholder="예: 1학년 1반 1번 -> 10101"
                 maxLength={40}
                 className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
@@ -411,7 +540,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                 htmlFor="author-name"
                 className="block text-sm font-semibold text-slate-900"
               >
-                이름
+                이름 (가상 별칭 가능)
               </label>
               <input
                 id="author-name"
@@ -423,7 +552,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                     setErrors((prev) => ({ ...prev, authorName: '' }));
                   }
                 }}
-                placeholder="예: 김에코"
+                placeholder="예: 김에코 (가상 별칭)"
                 maxLength={40}
                 className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
               />
@@ -441,8 +570,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
               1. 소속 모둠 선택
             </legend>
             <p className="text-xs text-slate-500">
-              개인 작성이 모두 끝나면 선생님이 모둠별로 결과를 모아 보여줄 때
-              기준이 됩니다.
+              같은 반 모둠원끼리 결과를 모아볼 때 기준이 됩니다.
             </p>
             <div className="flex flex-wrap gap-2">
               {GROUP_NAME_PRESETS.map((preset) => {
@@ -479,7 +607,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                       setErrors((prev) => ({ ...prev, groupName: '' }));
                     }
                   }}
-                  placeholder="예: 7모둠 또는 에코탐험대"
+                  placeholder="예: 10모둠 또는 에코탐험대"
                   maxLength={30}
                   className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
                 />
@@ -562,16 +690,15 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
           <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
             <div className="space-y-1">
               <p className="text-sm font-semibold text-slate-900">
-                3. 관찰 장소 사진 찍기 / 올리기
+                3. 관찰 장소 사진 찍기 / 올리기 (권장)
               </p>
               <p className="text-xs leading-relaxed text-slate-600">
                 제출한 사진은 나중에 프로그램으로 해결한 모습을 구현할 때 기준
-                사진으로 그대로 사용합니다. 친구 얼굴이 나오지 않도록 공간과
-                설비만 촬영해 주세요.
+                사진으로 그대로 사용합니다. 촬영 전 친구 얼굴이나 개인정보가
+                나오지 않도록 공간과 설비만 확인해 주세요.
               </p>
             </div>
 
-            {/* 사진 업로드용 파일 선택기 (capture 없음: 파일/앨범 열기) */}
             <input
               ref={uploadInputRef}
               id="location-photo-upload"
@@ -581,7 +708,6 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
               className="sr-only"
             />
 
-            {/* 권한 차단/미지원 환경용 기기 카메라 fallback 입력 */}
             <input
               ref={nativeCaptureInputRef}
               id="location-photo-native-capture"
@@ -592,7 +718,6 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
               className="sr-only"
             />
 
-            {/* 실시간 카메라 뷰파인더 */}
             {isCameraOpen && (
               <div className="space-y-3 rounded-xl border border-slate-300 bg-slate-950 p-3">
                 <div className="overflow-hidden rounded-lg bg-black">
@@ -635,37 +760,46 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
               </div>
             )}
 
-            {/* 두 개의 분리된 기본 버튼: [사진 촬영하기] / [사진 업로드하기] */}
             {!isCameraOpen && !form.photoDataUrl && (
-              <div className="grid grid-cols-1 gap-2.5 pt-1 sm:grid-cols-2">
-                <button
-                  type="button"
-                  disabled={isRequestingCamera || isProcessingPhoto}
-                  onClick={() => void startCamera(facingMode)}
-                  className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-emerald-700 bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 whitespace-nowrap"
-                >
-                  <Camera className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span>
-                    {isRequestingCamera
-                      ? '카메라 권한 확인 중...'
-                      : '사진 촬영하기'}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  disabled={isRequestingCamera || isProcessingPhoto}
-                  onClick={() => uploadInputRef.current?.click()}
-                  className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:opacity-60 whitespace-nowrap"
-                >
-                  <Upload className="h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />
-                  <span>
-                    {isProcessingPhoto ? '사진 불러오는 중...' : '사진 업로드하기'}
-                  </span>
-                </button>
+              <div className="space-y-2 pt-1">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    disabled={isRequestingCamera || isProcessingPhoto}
+                    onClick={() => void startCamera(facingMode)}
+                    className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-emerald-700 bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 whitespace-nowrap"
+                  >
+                    <Camera className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>
+                      {isRequestingCamera
+                        ? '카메라 권한 확인 중...'
+                        : '사진 촬영하기'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isRequestingCamera || isProcessingPhoto}
+                    onClick={() => uploadInputRef.current?.click()}
+                    className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:opacity-60 whitespace-nowrap"
+                  >
+                    <Upload
+                      className="h-4 w-4 shrink-0 text-slate-600"
+                      aria-hidden="true"
+                    />
+                    <span>
+                      {isProcessingPhoto
+                        ? '사진 불러오는 중...'
+                        : '사진 업로드하기'}
+                    </span>
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  카메라 사용이 어려운 기기라면 사진 없이 아래 관찰 내용만
+                  작성해 제출할 수도 있습니다.
+                </p>
               </div>
             )}
 
-            {/* 촬영/업로드 완료된 사진 미리보기 */}
             {!isCameraOpen && form.photoDataUrl && (
               <div className="space-y-3 pt-1">
                 <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-900/5">
@@ -676,6 +810,10 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                     className="max-h-64 w-full object-contain mx-auto"
                   />
                 </div>
+                <p className="text-xs font-medium text-slate-600">
+                  올린 사진에 친구 얼굴이나 이름표 등 개인정보가 나오지 않았는지
+                  한 번 더 확인해 주세요.
+                </p>
                 <div className="flex flex-col gap-2">
                   <input
                     type="text"
@@ -800,14 +938,30 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
             )}
           </div>
 
-          {/* 6. 센서로 바꾸는 한 줄 아이디어 (선택) */}
-          <div className="space-y-1.5">
+          {/* 6. 센서로 바꾸는 한 줄 아이디어 (선택 + 초보자용 힌트) */}
+          <div className="space-y-2">
             <label
               htmlFor="sensor-idea"
               className="block text-sm font-semibold text-slate-900"
             >
               6. 센서와 코딩으로 해결한다면? (선택)
             </label>
+            <p className="text-xs text-slate-500">
+              아직 센서 이름이 낯설다면 아래 버튼을 눌러 아이디어를 채워 볼 수
+              있습니다.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {SENSOR_HINT_ITEMS.map((hint) => (
+                <button
+                  key={hint}
+                  type="button"
+                  onClick={() => handleAppendSensorHint(hint)}
+                  className="min-h-[36px] rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 whitespace-nowrap"
+                >
+                  + {hint}
+                </button>
+              ))}
+            </div>
             <input
               id="sensor-idea"
               type="text"
@@ -847,7 +1001,6 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
             )}
           </div>
 
-          {/* 제출 버튼 */}
           <button
             type="submit"
             disabled={isSubmitting || isProcessingPhoto}
@@ -860,55 +1013,61 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
           </button>
         </form>
 
-        {/* 제출 결과 피드백 */}
+        {/* 제출 결과 피드백 (실패/미연결/저장 성공을 정확히 구분) */}
         {submitFeedback && (
           <div
-            role="status"
+            role={submitFeedback.failed ? 'alert' : 'status'}
             className={`mt-5 rounded-xl border p-4 text-sm ${
-              submitFeedback.savedToServer
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
-                : 'border-amber-300 bg-amber-50 text-amber-950'
+              submitFeedback.failed
+                ? 'border-rose-300 bg-rose-50 text-rose-950'
+                : submitFeedback.savedToServer
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+                  : 'border-amber-300 bg-amber-50 text-amber-950'
             }`}
           >
             <div className="flex items-start gap-2.5">
-              {submitFeedback.savedToServer ? (
+              {submitFeedback.savedToServer && !submitFeedback.failed ? (
                 <Check
                   className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700"
                   aria-hidden="true"
                 />
               ) : (
                 <AlertTriangle
-                  className="mt-0.5 h-4 w-4 shrink-0 text-amber-700"
+                  className={`mt-0.5 h-4 w-4 shrink-0 ${
+                    submitFeedback.failed ? 'text-rose-700' : 'text-amber-700'
+                  }`}
                   aria-hidden="true"
                 />
               )}
               <div className="space-y-2">
                 <p className="font-semibold">
-                  {submitFeedback.savedToServer
-                    ? '개인 관찰 일지가 서버에 저장되었습니다'
-                    : '입력 완료 (저장 준비 중 · 임시 미리보기)'}
+                  {submitFeedback.failed
+                    ? '저장에 실패했습니다 · 다시 확인해 주세요'
+                    : submitFeedback.savedToServer
+                      ? '개인 관찰 일지가 서버에 저장되었습니다'
+                      : '서버에 저장되지 않음 (저장 준비 중 · 임시 미리보기)'}
                 </p>
                 <p className="leading-relaxed opacity-90">
                   {submitFeedback.message}
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={onGoToTeacherView}
-                    className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-current/20 bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 hover:bg-slate-50"
-                  >
-                    <span>교사 화면에서 모둠별 결과 보기</span>
-                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onGoToLesson2}
-                    className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-current/20 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-50"
-                  >
-                    <span>2차시 · 모둠별 프로젝트 주제 선정으로 이동</span>
-                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                </div>
+                {!submitFeedback.failed && (
+                  <>
+                    <p className="text-xs opacity-85">
+                      개인 작성이 모두 끝나면 선생님이 모둠별로 결과를 모아
+                      보여주며 2차시 활동을 시작합니다.
+                    </p>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={onGoToLesson2}
+                        className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-current/20 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-50"
+                      >
+                        <span>2차시 · 모둠별 프로젝트 주제 선정으로 이동</span>
+                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -951,7 +1110,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
                         <span className="font-semibold text-emerald-800">
-                          {item.groupName || '모둠 미지정'}
+                          {item.classRoom} · {item.groupName || '모둠 미지정'}
                         </span>
                         <span aria-hidden="true">·</span>
                         <span className="font-medium text-slate-800">
