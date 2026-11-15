@@ -14,11 +14,14 @@ const TEACHER_LOGOUT_ENDPOINT = '/api/teacher/logout';
 const OBSERVATIONS_ENDPOINT = '/api/observations';
 const GROUP_TOPICS_ENDPOINT = '/api/group-topics';
 const GROUP_CODES_ENDPOINT = '/api/group-codes';
+const GROUP_CODES_BULK_ENDPOINT = '/api/group-codes/bulk';
 const GROUP_VERIFY_ENDPOINT = '/api/group-observations/verify';
 
 const PREVIEW_OBSERVATIONS_KEY = 'smart_eco_school_preview_observations_v3';
 const PREVIEW_TOPICS_KEY = 'smart_eco_school_preview_group_topics_v2';
 const PREVIEW_CODES_KEY = 'smart_eco_school_preview_group_codes_v2';
+const MY_SESSION_OBSERVATIONS_KEY = 'smart_eco_school_my_observations_v1';
+const MY_SESSION_TOPICS_KEY = 'smart_eco_school_my_topics_v1';
 
 export interface ApiHealthResult {
   status: StorageConnectionStatus;
@@ -44,6 +47,15 @@ export interface ApiFetchObservationsResult {
   status: StorageConnectionStatus;
   authorized: boolean;
   records: ObservationRecord[];
+  totalCount?: number;
+  availableClasses?: string[];
+  photosDeferred?: boolean;
+  error?: string;
+}
+
+export interface ApiFetchObservationPhotoResult {
+  ok: boolean;
+  photoDataUrl: string;
   error?: string;
 }
 
@@ -85,10 +97,19 @@ export interface ApiSaveCodeResult {
   message: string;
 }
 
+export interface ApiSaveBulkCodesResult {
+  savedToServer: boolean;
+  failed: boolean;
+  status: StorageConnectionStatus;
+  entries: GroupAuthCode[];
+  message: string;
+}
+
 export interface ApiVerifyGroupResult {
   verified: boolean;
   status: StorageConnectionStatus;
   observations: ObservationRecord[];
+  existingTopic: GroupTopicRecord | null;
   message: string;
 }
 
@@ -198,6 +219,66 @@ export function clearPreviewCodes(): void {
     window.sessionStorage.removeItem(PREVIEW_CODES_KEY);
   } catch {
     // Ignore storage errors
+  }
+}
+
+export function loadMySessionObservations(): ObservationRecord[] {
+  try {
+    const raw = window.sessionStorage.getItem(MY_SESSION_OBSERVATIONS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveMySessionObservations(records: ObservationRecord[]): void {
+  try {
+    window.sessionStorage.setItem(
+      MY_SESSION_OBSERVATIONS_KEY,
+      JSON.stringify(records)
+    );
+  } catch {
+    try {
+      const compact = records.map((r) => ({ ...r, photoDataUrl: '' }));
+      window.sessionStorage.setItem(
+        MY_SESSION_OBSERVATIONS_KEY,
+        JSON.stringify(compact)
+      );
+    } catch {
+      // Ignore quota errors
+    }
+  }
+}
+
+export function loadMySessionTopics(): GroupTopicRecord[] {
+  try {
+    const raw = window.sessionStorage.getItem(MY_SESSION_TOPICS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveMySessionTopics(records: GroupTopicRecord[]): void {
+  try {
+    window.sessionStorage.setItem(
+      MY_SESSION_TOPICS_KEY,
+      JSON.stringify(records)
+    );
+  } catch {
+    try {
+      const compact = records.map((r) => ({ ...r, referencePhotoDataUrl: '' }));
+      window.sessionStorage.setItem(
+        MY_SESSION_TOPICS_KEY,
+        JSON.stringify(compact)
+      );
+    } catch {
+      // Ignore quota errors
+    }
   }
 }
 
@@ -330,9 +411,15 @@ export async function logoutTeacher(): Promise<void> {
   }
 }
 
-export async function fetchObservationsFromApi(): Promise<ApiFetchObservationsResult> {
+export async function fetchObservationsFromApi(
+  classRoom?: string
+): Promise<ApiFetchObservationsResult> {
   try {
-    const response = await fetch(OBSERVATIONS_ENDPOINT, {
+    const query =
+      classRoom && classRoom !== 'all'
+        ? `?classRoom=${encodeURIComponent(classRoom)}`
+        : '';
+    const response = await fetch(`${OBSERVATIONS_ENDPOINT}${query}`, {
       method: 'GET',
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
@@ -373,13 +460,78 @@ export async function fetchObservationsFromApi(): Promise<ApiFetchObservationsRe
     const normalized: ObservationRecord[] = list.map(
       (item: ObservationRecord) => ({
         ...item,
+        hasPhoto:
+          typeof item.hasPhoto === 'boolean'
+            ? item.hasPhoto
+            : Boolean(item.photoDataUrl),
         syncState: 'saved-to-api',
       })
     );
 
-    return { status: 'connected', authorized: true, records: normalized };
+    const availableClasses = Array.isArray(data?.availableClasses)
+      ? (data.availableClasses as string[])
+      : undefined;
+
+    return {
+      status: 'connected',
+      authorized: true,
+      records: normalized,
+      totalCount:
+        typeof data?.totalCount === 'number'
+          ? data.totalCount
+          : normalized.length,
+      availableClasses,
+      photosDeferred: Boolean(data?.photosDeferred),
+    };
   } catch {
     return { status: 'not-connected', authorized: false, records: [] };
+  }
+}
+
+export async function fetchObservationPhotoFromApi(
+  id: string
+): Promise<ApiFetchObservationPhotoResult> {
+  try {
+    const response = await fetch(
+      `${OBSERVATIONS_ENDPOINT}/${encodeURIComponent(id)}/photo`,
+      {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      }
+    );
+
+    if (!isJsonResponse(response)) {
+      return {
+        ok: false,
+        photoDataUrl: '',
+        error: '서버와 연결되지 않았습니다.',
+      };
+    }
+
+    const data = await response.json();
+    if (!response.ok || data?.ok === false) {
+      return {
+        ok: false,
+        photoDataUrl: '',
+        error:
+          typeof data?.error === 'string'
+            ? data.error
+            : '사진을 불러오지 못했습니다.',
+      };
+    }
+
+    return {
+      ok: true,
+      photoDataUrl:
+        typeof data?.photoDataUrl === 'string' ? data.photoDataUrl : '',
+    };
+  } catch {
+    return {
+      ok: false,
+      photoDataUrl: '',
+      error: '사진을 불러오는 중 네트워크 오류가 발생했습니다.',
+    };
   }
 }
 
@@ -763,6 +915,100 @@ export async function saveGroupCode(
   };
 }
 
+export async function saveBulkGroupCodes(
+  classRoom: string,
+  entries: Array<{ groupName: string; code: string }>
+): Promise<ApiSaveBulkCodesResult> {
+  const nowIso = new Date().toISOString();
+  const normalizedClass = classRoom.trim();
+  const cleanedEntries = entries.map((item) => ({
+    groupName: item.groupName.trim(),
+    code: item.code.trim(),
+  }));
+
+  try {
+    const response = await fetch(GROUP_CODES_BULK_ENDPOINT, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        classRoom: normalizedClass,
+        entries: cleanedEntries,
+      }),
+    });
+
+    if (isJsonResponse(response)) {
+      const data = await response.json();
+      if (response.ok && data?.ok !== false) {
+        const list: GroupAuthCode[] = Array.isArray(data?.entries)
+          ? data.entries.map(
+              (item: {
+                classRoom?: string;
+                groupName?: string;
+                code?: string;
+                updatedAt?: string;
+              }) => ({
+                classRoom: item.classRoom
+                  ? String(item.classRoom)
+                  : normalizedClass,
+                groupName: String(item.groupName || ''),
+                code: String(item.code || ''),
+                updatedAt: item.updatedAt ? String(item.updatedAt) : nowIso,
+                syncState: 'saved-to-api',
+              })
+            )
+          : cleanedEntries.map((item) => ({
+              classRoom: normalizedClass,
+              groupName: item.groupName,
+              code: item.code,
+              updatedAt: nowIso,
+              syncState: 'saved-to-api',
+            }));
+
+        return {
+          savedToServer: true,
+          failed: false,
+          status: 'connected',
+          entries: list,
+          message: `${normalizedClass}의 ${list.length}개 모둠 인증코드가 서버(Cloudflare D1)에 일괄 저장되었습니다.`,
+        };
+      }
+
+      return {
+        savedToServer: false,
+        failed: true,
+        status: response.status >= 500 ? 'not-connected' : 'connected',
+        entries: [],
+        message:
+          typeof data?.error === 'string'
+            ? data.error
+            : '모둠 인증코드를 일괄 저장하지 못했습니다.',
+      };
+    }
+  } catch {
+    // Not connected yet
+  }
+
+  const previewEntries: GroupAuthCode[] = cleanedEntries.map((item) => ({
+    classRoom: normalizedClass,
+    groupName: item.groupName,
+    code: item.code,
+    updatedAt: nowIso,
+    syncState: 'preview-only',
+  }));
+
+  return {
+    savedToServer: false,
+    failed: false,
+    status: 'not-connected',
+    entries: previewEntries,
+    message: `미리보기 모드 (서버에 저장되지 않음): ${normalizedClass} ${previewEntries.length}개 모둠 인증코드가 현재 브라우저 임시 미리보기에만 반영되었습니다.`,
+  };
+}
+
 export async function deleteGroupCodeFromApi(
   classRoom: string,
   groupName: string
@@ -806,7 +1052,8 @@ export async function verifyGroupAuthAndFetchObservations(
   groupName: string,
   code: string,
   previewCodes: GroupAuthCode[],
-  previewObservations: ObservationRecord[]
+  previewObservations: ObservationRecord[],
+  previewTopics: GroupTopicRecord[] = []
 ): Promise<ApiVerifyGroupResult> {
   const normalizedClass = classRoom.trim();
   const normalizedGroup = groupName.trim();
@@ -831,6 +1078,13 @@ export async function verifyGroupAuthAndFetchObservations(
       const data = await response.json();
       if (response.ok && data?.verified) {
         const list = Array.isArray(data.observations) ? data.observations : [];
+        const existingTopic: GroupTopicRecord | null = data.existingTopic
+          ? {
+              ...(data.existingTopic as GroupTopicRecord),
+              syncState: 'saved-to-api',
+            }
+          : null;
+
         return {
           verified: true,
           status: 'connected',
@@ -838,6 +1092,7 @@ export async function verifyGroupAuthAndFetchObservations(
             ...item,
             syncState: 'saved-to-api',
           })),
+          existingTopic,
           message: `${normalizedClass} ${normalizedGroup} 인증이 완료되었습니다.`,
         };
       }
@@ -846,6 +1101,7 @@ export async function verifyGroupAuthAndFetchObservations(
         verified: false,
         status: response.status >= 500 ? 'not-connected' : 'connected',
         observations: [],
+        existingTopic: null,
         message:
           data?.message ||
           '모둠 인증코드가 일치하지 않습니다. 선생님께 받은 코드를 다시 확인해 주세요.',
@@ -866,6 +1122,7 @@ export async function verifyGroupAuthAndFetchObservations(
       verified: false,
       status: 'not-connected',
       observations: [],
+      existingTopic: null,
       message: `아직 "${normalizedClass} ${normalizedGroup}"의 인증코드가 등록되지 않았습니다. 선생님께 모둠 인증코드를 확인해 주세요.`,
     };
   }
@@ -875,6 +1132,7 @@ export async function verifyGroupAuthAndFetchObservations(
       verified: false,
       status: 'not-connected',
       observations: [],
+      existingTopic: null,
       message:
         '인증코드가 일치하지 않습니다. 선생님께 받은 모둠별 인증코드를 다시 확인해 주세요.',
     };
@@ -886,10 +1144,18 @@ export async function verifyGroupAuthAndFetchObservations(
       obs.groupName.trim() === normalizedGroup
   );
 
+  const matchedTopic =
+    previewTopics.find(
+      (t) =>
+        t.classRoom.trim() === normalizedClass &&
+        t.groupName.trim() === normalizedGroup
+    ) || null;
+
   return {
     verified: true,
     status: 'not-connected',
     observations: matchedObs,
+    existingTopic: matchedTopic,
     message: `임시 미리보기 인증 완료 (${normalizedClass} ${normalizedGroup}) · 저장소 연결 전이므로 현재 브라우저에 입력된 1차시 기록만 표시됩니다.`,
   };
 }

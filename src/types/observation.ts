@@ -21,6 +21,7 @@ export interface ObservationRecord extends ObservationInput {
   id: string;
   createdAt: string;
   syncState: SyncState;
+  hasPhoto?: boolean;
 }
 
 export interface GroupTopicInput {

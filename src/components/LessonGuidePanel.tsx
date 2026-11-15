@@ -1,5 +1,11 @@
-import React from 'react';
-import { ShieldCheck, Footprints, Eye, Users } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  ChevronDown,
+  Eye,
+  Footprints,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
 
 export const Lesson1PageHeader: React.FC = () => {
   return (
@@ -23,18 +29,40 @@ export const Lesson1PageHeader: React.FC = () => {
 };
 
 export const Lesson1FlowSection: React.FC = () => {
+  const [isMobileExpanded, setIsMobileExpanded] = useState(false);
+
   return (
     <section
       aria-labelledby="lesson1-flow-title"
       className="rounded-xl border border-slate-200 bg-white p-5 space-y-4"
     >
-      <h2
-        id="lesson1-flow-title"
-        className="text-base font-semibold text-slate-900"
+      <div className="flex items-center justify-between gap-3">
+        <h2
+          id="lesson1-flow-title"
+          className="text-base font-semibold text-slate-900"
+        >
+          1차시 진행 순서
+        </h2>
+        <button
+          type="button"
+          onClick={() => setIsMobileExpanded((prev) => !prev)}
+          aria-expanded={isMobileExpanded}
+          className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 md:hidden whitespace-nowrap"
+        >
+          <span>{isMobileExpanded ? '접기' : '순서 보기'}</span>
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition-transform ${
+              isMobileExpanded ? 'rotate-180' : ''
+            }`}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+      <ol
+        className={`${
+          isMobileExpanded ? 'block' : 'hidden'
+        } md:block space-y-4 text-sm text-slate-700`}
       >
-        1차시 진행 순서
-      </h2>
-      <ol className="space-y-4 text-sm text-slate-700">
         <li className="flex items-start gap-3">
           <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs font-semibold text-slate-700 tabular-nums">
             1

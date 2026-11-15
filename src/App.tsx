@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { TopBar, type AppView } from './components/TopBar';
 import { StorageStatusNotice } from './components/StorageStatusNotice';
@@ -23,16 +23,22 @@ import {
   deleteObservationFromApi,
   fetchGroupCodesFromApi,
   fetchGroupTopicsFromApi,
+  fetchObservationPhotoFromApi,
   fetchObservationsFromApi,
   fetchTeacherSession,
+  loadMySessionObservations,
+  loadMySessionTopics,
   loadPreviewCodes,
   loadPreviewRecords,
   loadPreviewTopics,
   loginTeacher,
   logoutTeacher,
+  saveMySessionObservations,
+  saveMySessionTopics,
   savePreviewCodes,
   savePreviewRecords,
   savePreviewTopics,
+  type ApiSaveBulkCodesResult,
   type ApiSaveCodeResult,
   type ApiSubmitObservationResult,
   type ApiSubmitTopicResult,
@@ -45,8 +51,23 @@ import type {
   StorageConnectionStatus,
 } from './types/observation';
 
+function detectInitialView(): AppView {
+  if (typeof window === 'undefined') return 'lesson0';
+  const params = new URLSearchParams(window.location.search);
+  if (
+    params.get('mode') === 'teacher' ||
+    params.get('teacher') === '1' ||
+    window.location.pathname === '/teacher'
+  ) {
+    return 'teacher';
+  }
+  return 'lesson0';
+}
+
 export default function App() {
-  const [activeView, setActiveView] = useState<AppView>('lesson0');
+  const [activeView, setActiveView] = useState<AppView>(() =>
+    detectInitialView()
+  );
   const [teacherInitialTab, setTeacherInitialTab] =
     useState<TeacherStageTab>('lesson1');
   const [storageStatus, setStorageStatus] =
@@ -67,11 +88,13 @@ export default function App() {
     description: string;
   } | null>(null);
 
-  // 학생 개인 브라우저 세션에서 방금 제출한 기록만 보관 (타 학생 비공개 응답 차단)
+  // 학생 개인 브라우저 세션에서 방금 제출한 기록만 보관 (F5 새로고침 시에도 유지, 타 학생 비공개 응답 차단)
   const [sessionObservations, setSessionObservations] = useState<
     ObservationRecord[]
-  >([]);
-  const [sessionTopics, setSessionTopics] = useState<GroupTopicRecord[]>([]);
+  >(() => loadMySessionObservations());
+  const [sessionTopics, setSessionTopics] = useState<GroupTopicRecord[]>(() =>
+    loadMySessionTopics()
+  );
 
   // 교사 로그인 인증 후에만 채워지는 서버 D1 전체 기록
   const [serverObservations, setServerObservations] = useState<
@@ -79,6 +102,15 @@ export default function App() {
   >([]);
   const [serverTopics, setServerTopics] = useState<GroupTopicRecord[]>([]);
   const [serverCodes, setServerCodes] = useState<GroupAuthCode[]>([]);
+  const [teacherClassFilter, setTeacherClassFilter] = useState<string>('all');
+  const teacherClassFilterRef = useRef<string>('all');
+  const [serverAvailableClasses, setServerAvailableClasses] = useState<
+    string[]
+  >([]);
+  const [serverPhotosDeferred, setServerPhotosDeferred] = useState(false);
+  const [serverTotalObsCount, setServerTotalObsCount] = useState<
+    number | undefined
+  >(undefined);
 
   // 서버 미연결 시(로컬 개발 미리보기 등) 사용하는 현재 브라우저 임시 저장 기록
   const [previewObservations, setPreviewObservations] = useState<
@@ -91,11 +123,13 @@ export default function App() {
     loadPreviewCodes()
   );
 
-  const loadTeacherData = useCallback(async () => {
+  const loadTeacherData = useCallback(async (classFilterOverride?: string) => {
     setIsRefreshingData(true);
     try {
+      const targetClass =
+        classFilterOverride ?? teacherClassFilterRef.current;
       const [obsRes, topicRes, codeRes] = await Promise.all([
-        fetchObservationsFromApi(),
+        fetchObservationsFromApi(targetClass),
         fetchGroupTopicsFromApi(),
         fetchGroupCodesFromApi(),
       ]);
@@ -105,11 +139,19 @@ export default function App() {
         setServerObservations([]);
         setServerTopics([]);
         setServerCodes([]);
+        setServerAvailableClasses([]);
+        setServerPhotosDeferred(false);
+        setServerTotalObsCount(undefined);
         return;
       }
 
       if (obsRes.status === 'connected') {
         setServerObservations(obsRes.records);
+        setServerAvailableClasses(obsRes.availableClasses ?? []);
+        setServerPhotosDeferred(Boolean(obsRes.photosDeferred));
+        if (targetClass === 'all') {
+          setServerTotalObsCount(obsRes.totalCount ?? obsRes.records.length);
+        }
       }
       if (topicRes.status === 'connected') {
         setServerTopics(topicRes.records);
@@ -145,6 +187,9 @@ export default function App() {
         setServerObservations([]);
         setServerTopics([]);
         setServerCodes([]);
+        setServerAvailableClasses([]);
+        setServerPhotosDeferred(false);
+        setServerTotalObsCount(undefined);
       }
     } finally {
       setIsCheckingStorage(false);
@@ -175,10 +220,51 @@ export default function App() {
     setServerObservations([]);
     setServerTopics([]);
     setServerCodes([]);
+    setServerAvailableClasses([]);
+    setServerPhotosDeferred(false);
+    setServerTotalObsCount(undefined);
   };
 
   const handleRefreshTeacherData = async () => {
     await checkStorageAndLoad();
+  };
+
+  const handleTeacherClassFilterChange = async (nextClass: string) => {
+    setTeacherClassFilter(nextClass);
+    teacherClassFilterRef.current = nextClass;
+    if (storageStatus !== 'connected' || !isTeacherAuthenticated) return;
+
+    setIsRefreshingData(true);
+    try {
+      const obsRes = await fetchObservationsFromApi(nextClass);
+      if (!obsRes.authorized) {
+        setIsTeacherAuthenticated(false);
+        setServerObservations([]);
+        return;
+      }
+      if (obsRes.status === 'connected') {
+        setServerObservations(obsRes.records);
+        setServerAvailableClasses(obsRes.availableClasses ?? []);
+        setServerPhotosDeferred(Boolean(obsRes.photosDeferred));
+        if (nextClass === 'all') {
+          setServerTotalObsCount(obsRes.totalCount ?? obsRes.records.length);
+        }
+      }
+    } finally {
+      setIsRefreshingData(false);
+    }
+  };
+
+  const handleLoadObservationPhoto = async (obsId: string) => {
+    const res = await fetchObservationPhotoFromApi(obsId);
+    if (!res.ok || !res.photoDataUrl) return;
+    setServerObservations((prev) =>
+      prev.map((item) =>
+        item.id === obsId
+          ? { ...item, photoDataUrl: res.photoDataUrl, hasPhoto: true }
+          : item
+      )
+    );
   };
 
   const studentObservations =
@@ -216,9 +302,16 @@ export default function App() {
     setStorageStatus(result.status);
     if (result.savedToServer) {
       const savedRecord = result.record;
-      setSessionObservations((prev) => [savedRecord, ...prev]);
+      setSessionObservations((prev) => {
+        const next = [savedRecord, ...prev];
+        saveMySessionObservations(next);
+        return next;
+      });
       if (isTeacherAuthenticated) {
         setServerObservations((prev) => [savedRecord, ...prev]);
+        setServerTotalObsCount((prev) =>
+          typeof prev === 'number' ? prev + 1 : prev
+        );
       }
     } else {
       const previewRecord = result.record;
@@ -245,10 +338,14 @@ export default function App() {
 
     if (result.savedToServer) {
       const savedRecord = result.record;
-      setSessionTopics((prev) => [
-        savedRecord,
-        ...prev.filter((item) => !isSameGroup(item, savedRecord)),
-      ]);
+      setSessionTopics((prev) => {
+        const next = [
+          savedRecord,
+          ...prev.filter((item) => !isSameGroup(item, savedRecord)),
+        ];
+        saveMySessionTopics(next);
+        return next;
+      });
       if (isTeacherAuthenticated) {
         setServerTopics((prev) => [
           savedRecord,
@@ -306,6 +403,44 @@ export default function App() {
     }
   };
 
+  const handleBulkGroupCodesSaved = (result: ApiSaveBulkCodesResult) => {
+    if (result.failed || result.entries.length === 0) {
+      return;
+    }
+
+    setStorageStatus(result.status);
+    const sortCodes = (list: GroupAuthCode[]) =>
+      list.sort((a, b) => {
+        const clsCmp = a.classRoom.localeCompare(b.classRoom, 'ko');
+        if (clsCmp !== 0) return clsCmp;
+        return a.groupName.localeCompare(b.groupName, 'ko');
+      });
+
+    const entryKeys = new Set(
+      result.entries.map((e) => `${e.classRoom.trim()}::${e.groupName.trim()}`)
+    );
+
+    if (result.savedToServer) {
+      setServerCodes((prev) => {
+        const filtered = prev.filter(
+          (item) =>
+            !entryKeys.has(`${item.classRoom.trim()}::${item.groupName.trim()}`)
+        );
+        return sortCodes([...filtered, ...result.entries]);
+      });
+    } else {
+      setPreviewCodes((prev) => {
+        const filtered = prev.filter(
+          (item) =>
+            !entryKeys.has(`${item.classRoom.trim()}::${item.groupName.trim()}`)
+        );
+        const next = sortCodes([...filtered, ...result.entries]);
+        savePreviewCodes(next);
+        return next;
+      });
+    }
+  };
+
   const handleDeletePreviewObservation = (id: string) => {
     setPreviewObservations((prev) => {
       const next = prev.filter((item) => item.id !== id);
@@ -319,7 +454,14 @@ export default function App() {
     if (res.failed) return;
 
     setServerObservations((prev) => prev.filter((item) => item.id !== id));
-    setSessionObservations((prev) => prev.filter((item) => item.id !== id));
+    setServerTotalObsCount((prev) =>
+      typeof prev === 'number' && prev > 0 ? prev - 1 : prev
+    );
+    setSessionObservations((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      saveMySessionObservations(next);
+      return next;
+    });
     setPreviewObservations((prev) => {
       const next = prev.filter((item) => item.id !== id);
       savePreviewRecords(next);
@@ -340,7 +482,11 @@ export default function App() {
     if (res.failed) return;
 
     setServerTopics((prev) => prev.filter((item) => item.id !== id));
-    setSessionTopics((prev) => prev.filter((item) => item.id !== id));
+    setSessionTopics((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      saveMySessionTopics(next);
+      return next;
+    });
     setPreviewTopics((prev) => {
       const next = prev.filter((item) => item.id !== id);
       savePreviewTopics(next);
@@ -380,6 +526,24 @@ export default function App() {
     (view: AppView, teacherTab: TeacherStageTab = 'lesson1') => {
       if (view === 'teacher') {
         setTeacherInitialTab(teacherTab);
+      }
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        if (view === 'teacher') {
+          url.searchParams.set('mode', 'teacher');
+          url.searchParams.delete('teacher');
+        } else {
+          url.searchParams.delete('mode');
+          url.searchParams.delete('teacher');
+          if (url.pathname === '/teacher') {
+            url.pathname = '/';
+          }
+        }
+        window.history.replaceState(
+          {},
+          '',
+          `${url.pathname}${url.search}${url.hash}`
+        );
       }
       setPendingNav(null);
       setLesson1Dirty(false);
@@ -611,6 +775,12 @@ export default function App() {
             isTeacherAuthenticated={isTeacherAuthenticated}
             isTeacherAuthConfigured={isTeacherAuthConfigured}
             isRefreshingData={isRefreshingData}
+            availableClassesFromServer={serverAvailableClasses}
+            photosDeferred={serverPhotosDeferred}
+            totalObservationCount={serverTotalObsCount}
+            selectedServerClassFilter={teacherClassFilter}
+            onClassFilterServerChange={handleTeacherClassFilterChange}
+            onLoadObservationPhoto={handleLoadObservationPhoto}
             onTeacherLogin={handleTeacherLogin}
             onTeacherLogout={handleTeacherLogout}
             onRefreshData={handleRefreshTeacherData}
@@ -619,6 +789,7 @@ export default function App() {
             onDeleteObservation={(id) => void handleDeleteObservation(id)}
             onDeleteTopic={(id) => void handleDeleteTopic(id)}
             onGroupCodeSaved={handleGroupCodeSaved}
+            onBulkGroupCodesSaved={handleBulkGroupCodesSaved}
             onDeleteGroupCode={(cls, grp) =>
               void handleDeleteGroupCode(cls, grp)
             }
@@ -690,14 +861,27 @@ export default function App() {
       )}
 
       <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <span>
-            피지컬 컴퓨팅으로 만드는 스마트 에코 스쿨 · 1차시·2차시 활동
+            피지컬 컴퓨팅으로 만드는 스마트 에코 스쿨 · 1·2차시 활동
           </span>
-          <span>
-            저장 경로 준비: same-origin /api/observations · /api/group-topics ·
-            /api/group-codes
-          </span>
+          {activeView === 'teacher' ? (
+            <button
+              type="button"
+              onClick={() => performNavigate('lesson0')}
+              className="self-start text-xs font-medium text-slate-500 underline-offset-4 hover:text-slate-800 hover:underline sm:self-auto"
+            >
+              학생 활동 화면으로 돌아가기
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => requestNavigate('teacher', 'lesson1')}
+              className="self-start text-xs font-medium text-slate-500 underline-offset-4 hover:text-slate-800 hover:underline sm:self-auto"
+            >
+              교사 확인 화면
+            </button>
+          )}
         </div>
       </footer>
     </div>

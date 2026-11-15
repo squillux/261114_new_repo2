@@ -3,9 +3,11 @@ import {
   AlertTriangle,
   Check,
   Clock,
+  Copy,
   Eye,
   EyeOff,
   FileText,
+  Image as ImageIcon,
   KeyRound,
   Lock,
   LogOut,
@@ -27,7 +29,9 @@ import {
   type StorageConnectionStatus,
 } from '../types/observation';
 import {
+  saveBulkGroupCodes,
   saveGroupCode,
+  type ApiSaveBulkCodesResult,
   type ApiSaveCodeResult,
   type ApiTeacherLoginResult,
 } from '../lib/observationApi';
@@ -46,6 +50,12 @@ interface TeacherReviewViewProps {
   isTeacherAuthenticated: boolean;
   isTeacherAuthConfigured: boolean;
   isRefreshingData: boolean;
+  availableClassesFromServer?: string[];
+  photosDeferred?: boolean;
+  totalObservationCount?: number;
+  selectedServerClassFilter?: string;
+  onClassFilterServerChange?: (classRoom: string) => Promise<void>;
+  onLoadObservationPhoto?: (id: string) => Promise<void>;
   onTeacherLogin: (password: string) => Promise<ApiTeacherLoginResult>;
   onTeacherLogout: () => Promise<void>;
   onRefreshData: () => Promise<void>;
@@ -54,6 +64,7 @@ interface TeacherReviewViewProps {
   onDeleteObservation: (id: string) => void;
   onDeleteTopic: (id: string) => void;
   onGroupCodeSaved: (result: ApiSaveCodeResult) => void;
+  onBulkGroupCodesSaved: (result: ApiSaveBulkCodesResult) => void;
   onDeleteGroupCode: (classRoom: string, groupName: string) => void;
   onGoToLesson1: () => void;
   onGoToLesson2: () => void;
@@ -79,6 +90,12 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
   isTeacherAuthenticated,
   isTeacherAuthConfigured,
   isRefreshingData,
+  availableClassesFromServer = [],
+  photosDeferred = false,
+  totalObservationCount,
+  selectedServerClassFilter = 'all',
+  onClassFilterServerChange,
+  onLoadObservationPhoto,
   onTeacherLogin,
   onTeacherLogout,
   onRefreshData,
@@ -87,6 +104,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
   onDeleteObservation,
   onDeleteTopic,
   onGroupCodeSaved,
+  onBulkGroupCodesSaved,
   onDeleteGroupCode,
   onGoToLesson1,
   onGoToLesson2,
@@ -97,11 +115,14 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
   const [loginError, setLoginError] = useState('');
   const [displayMode, setDisplayMode] =
     useState<Lesson1DisplayMode>('by-group');
-  const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
+  const [selectedClassFilter, setSelectedClassFilter] = useState<string>(
+    selectedServerClassFilter || 'all'
+  );
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('all');
   const [locationFilter, setLocationFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showGroupCodesInLesson1, setShowGroupCodesInLesson1] = useState(false);
+  const [loadingPhotoId, setLoadingPhotoId] = useState<string | null>(null);
   const [confirmDeleteObsId, setConfirmDeleteObsId] = useState<string | null>(
     null
   );
@@ -124,11 +145,25 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
   const [codeValue, setCodeValue] = useState<string>('');
   const [codeFormError, setCodeFormError] = useState<string>('');
   const [isSavingCode, setIsSavingCode] = useState(false);
-  const [codeSaveFeedback, setCodeSaveFeedback] =
-    useState<ApiSaveCodeResult | null>(null);
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+  const [confirmBulkOverwriteClass, setConfirmBulkOverwriteClass] = useState<
+    string | null
+  >(null);
+  const [codeListClassFilter, setCodeListClassFilter] = useState<string>('all');
+  const [copiedCodesNotice, setCopiedCodesNotice] = useState<string>('');
+  const [codeSaveFeedback, setCodeSaveFeedback] = useState<{
+    savedToServer: boolean;
+    failed: boolean;
+    status: StorageConnectionStatus;
+    message: string;
+  } | null>(null);
 
   const availableClasses = useMemo(() => {
     const set = new Set<string>();
+    availableClassesFromServer.forEach((cls) => {
+      const c = cls?.trim();
+      if (c) set.add(c);
+    });
     observations.forEach((o) => {
       const c = o.classRoom?.trim();
       if (c) set.add(c);
@@ -142,7 +177,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
       if (c) set.add(c);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'));
-  }, [observations, topics, groupCodes]);
+  }, [availableClassesFromServer, observations, topics, groupCodes]);
 
   const availableGroupNames = useMemo(() => {
     const map = new Map<string, number>();
@@ -280,15 +315,25 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
 
   const stats = useMemo(() => {
     const photoCount = observations.filter((r) =>
-      Boolean(r.photoDataUrl)
+      Boolean(r.photoDataUrl || r.hasPhoto)
     ).length;
+    const obsCount =
+      selectedClassFilter === 'all' && typeof totalObservationCount === 'number'
+        ? Math.max(totalObservationCount, observations.length)
+        : observations.length;
     return {
-      observations: observations.length,
+      observations: obsCount,
       groupsWithObs: totalGroupBucketCount,
       photos: photoCount,
       topics: topics.length,
     };
-  }, [observations, totalGroupBucketCount, topics.length]);
+  }, [
+    observations,
+    totalGroupBucketCount,
+    topics.length,
+    selectedClassFilter,
+    totalObservationCount,
+  ]);
 
   const hasPreviewOnlyRecords =
     observations.some((r) => r.syncState === 'preview-only') ||
@@ -322,6 +367,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
   const handleCodeClassChange = (value: string) => {
     setCodeClassPreset(value);
     setCodeFormError('');
+    setConfirmBulkOverwriteClass(null);
     if (value === '직접 입력') {
       setCodeClassRoom('');
     } else {
@@ -378,6 +424,101 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
       }
     } finally {
       setIsSavingCode(false);
+    }
+  };
+
+  const executeBulkGenerateCodes = async (targetClass: string) => {
+    const groupPresets = GROUP_NAME_PRESETS.filter((g) => g !== '직접 입력');
+    const entries = groupPresets.map((groupName) => ({
+      groupName,
+      code: String(Math.floor(1000 + Math.random() * 9000)),
+    }));
+
+    setIsBulkGenerating(true);
+    setConfirmBulkOverwriteClass(null);
+    try {
+      const result = await saveBulkGroupCodes(targetClass, entries);
+      setCodeSaveFeedback({
+        savedToServer: result.savedToServer,
+        failed: result.failed,
+        status: result.status,
+        message: result.message,
+      });
+      if (!result.failed) {
+        onBulkGroupCodesSaved(result);
+        setCodeListClassFilter(targetClass);
+      }
+    } finally {
+      setIsBulkGenerating(false);
+    }
+  };
+
+  const handleBulkGenerateClick = () => {
+    setCodeFormError('');
+    const targetClass = codeClassRoom.trim();
+    if (!targetClass) {
+      setCodeFormError('일괄 생성할 학급(반)을 먼저 선택하거나 입력해 주세요.');
+      return;
+    }
+
+    const hasExistingForClass = groupCodes.some(
+      (c) => c.classRoom.trim() === targetClass
+    );
+    if (hasExistingForClass && confirmBulkOverwriteClass !== targetClass) {
+      setConfirmBulkOverwriteClass(targetClass);
+      return;
+    }
+
+    void executeBulkGenerateCodes(targetClass);
+  };
+
+  const filteredGroupCodes = useMemo(() => {
+    if (codeListClassFilter === 'all') return groupCodes;
+    return groupCodes.filter(
+      (entry) => entry.classRoom.trim() === codeListClassFilter
+    );
+  }, [groupCodes, codeListClassFilter]);
+
+  const handleCopyGroupCodes = async () => {
+    if (filteredGroupCodes.length === 0) return;
+    const header =
+      codeListClassFilter === 'all'
+        ? '[모둠별 인증코드 전체 목록]'
+        : `[${codeListClassFilter} 모둠별 인증코드]`;
+    const lines = filteredGroupCodes.map(
+      (c) => `${c.classRoom} · ${c.groupName}: ${c.code}`
+    );
+    const text = `${header}\n${lines.join('\n')}`;
+
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+        setCopiedCodesNotice(
+          `${
+            codeListClassFilter === 'all'
+              ? '전체'
+              : codeListClassFilter
+          } 인증코드 ${filteredGroupCodes.length}건을 클립보드에 복사했습니다.`
+        );
+      } else {
+        setCopiedCodesNotice(
+          '이 브라우저에서는 자동 복사가 지원되지 않습니다. 화면 목록에서 직접 확인해 주세요.'
+        );
+      }
+    } catch {
+      setCopiedCodesNotice(
+        '클립보드 복사에 실패했습니다. 브라우저 권한을 확인하거나 화면 목록을 참고해 주세요.'
+      );
+    }
+  };
+
+  const handleLoadPhoto = async (obsId: string) => {
+    if (!onLoadObservationPhoto) return;
+    setLoadingPhotoId(obsId);
+    try {
+      await onLoadObservationPhoto(obsId);
+    } finally {
+      setLoadingPhotoId((prev) => (prev === obsId ? null : prev));
     }
   };
 
@@ -722,7 +863,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              1차시 · 개인 관찰 결과 ({observations.length})
+              1차시 · 개인 관찰 결과 ({stats.observations})
             </button>
             <button
               type="button"
@@ -813,8 +954,16 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                 id="teacher-class-filter"
                 value={selectedClassFilter}
                 onChange={(e) => {
-                  setSelectedClassFilter(e.target.value);
+                  const nextClass = e.target.value;
+                  setSelectedClassFilter(nextClass);
                   setSelectedGroupFilter('all');
+                  if (
+                    storageStatus === 'connected' &&
+                    isTeacherAuthenticated &&
+                    onClassFilterServerChange
+                  ) {
+                    void onClassFilterServerChange(nextClass);
+                  }
                 }}
                 className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 focus:border-emerald-700 focus:outline-none"
               >
@@ -894,6 +1043,17 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
       </div>
 
       {/* 탭 1: 1차시 개인/모둠 관찰 결과 */}
+      {stageTab === 'lesson1' && photosDeferred && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs leading-relaxed text-emerald-950">
+          전체 학급 응답({stats.observations}건)이 많아 속도를 위해 텍스트
+          먼저 불러왔습니다. 위{' '}
+          <span className="font-semibold">학급 필터</span>에서 특정 반을
+          선택하면 해당 반의 모든 사진을 한꺼번에 불러오고, 개별 카드의{' '}
+          <span className="font-semibold">[사진 불러오기]</span>로도 바로
+          확인할 수 있습니다.
+        </div>
+      )}
+
       {stageTab === 'lesson1' &&
         (filteredObservations.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white px-6 py-12 text-center">
@@ -948,8 +1108,9 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                       <span className="text-xs font-medium text-slate-500 tabular-nums">
                         · 개인 관찰 {bucket.items.length}건 · 사진{' '}
                         {
-                          bucket.items.filter((i) => Boolean(i.photoDataUrl))
-                            .length
+                          bucket.items.filter((i) =>
+                            Boolean(i.photoDataUrl || i.hasPhoto)
+                          ).length
                         }
                         장
                       </span>
@@ -1039,7 +1200,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                             </div>
                           </div>
 
-                          {item.photoDataUrl && (
+                          {item.photoDataUrl ? (
                             <div className="space-y-1.5">
                               <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white">
                                 <img
@@ -1074,7 +1235,37 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                                 </p>
                               )}
                             </div>
-                          )}
+                          ) : item.hasPhoto && onLoadObservationPhoto ? (
+                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2.5">
+                              <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+                                <ImageIcon
+                                  className="h-3.5 w-3.5 text-slate-400"
+                                  aria-hidden="true"
+                                />
+                                <span>
+                                  {item.photoCaption
+                                    ? `사진 첨부됨 (${item.photoCaption})`
+                                    : '현장 사진이 첨부되어 있습니다'}
+                                </span>
+                              </span>
+                              <button
+                                type="button"
+                                disabled={loadingPhotoId === item.id}
+                                onClick={() => void handleLoadPhoto(item.id)}
+                                className="inline-flex min-h-[34px] items-center gap-1.5 rounded-md border border-emerald-700/40 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-60 whitespace-nowrap"
+                              >
+                                <ImageIcon
+                                  className="h-3.5 w-3.5"
+                                  aria-hidden="true"
+                                />
+                                <span>
+                                  {loadingPhotoId === item.id
+                                    ? '불러오는 중...'
+                                    : '사진 불러오기'}
+                                </span>
+                              </button>
+                            </div>
+                          ) : null}
 
                           <div className="space-y-2 text-sm">
                             <div>
@@ -1159,7 +1350,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-12">
-                    {item.photoDataUrl && (
+                    {item.photoDataUrl ? (
                       <div className="md:col-span-4 space-y-1.5">
                         <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
                           <img
@@ -1186,11 +1377,36 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                           </button>
                         </div>
                       </div>
-                    )}
+                    ) : item.hasPhoto && onLoadObservationPhoto ? (
+                      <div className="md:col-span-4 flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-center">
+                        <p className="text-xs text-slate-600">
+                          {item.photoCaption || '현장 사진이 첨부되어 있습니다'}
+                        </p>
+                        <button
+                          type="button"
+                          disabled={loadingPhotoId === item.id}
+                          onClick={() => void handleLoadPhoto(item.id)}
+                          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-md border border-emerald-700/40 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-50 disabled:opacity-60"
+                        >
+                          <ImageIcon
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                          />
+                          <span>
+                            {loadingPhotoId === item.id
+                              ? '불러오는 중...'
+                              : '사진 불러오기'}
+                          </span>
+                        </button>
+                      </div>
+                    ) : null}
 
                     <div
                       className={`grid gap-4 sm:grid-cols-2 ${
-                        item.photoDataUrl ? 'md:col-span-8' : 'md:col-span-12'
+                        item.photoDataUrl ||
+                        (item.hasPhoto && onLoadObservationPhoto)
+                          ? 'md:col-span-8'
+                          : 'md:col-span-12'
                       }`}
                     >
                       <div className="space-y-1">
@@ -1536,7 +1752,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
 
               <button
                 type="submit"
-                disabled={isSavingCode}
+                disabled={isSavingCode || isBulkGenerating}
                 className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
               >
                 <KeyRound className="h-4 w-4" aria-hidden="true" />
@@ -1544,6 +1760,66 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   {isSavingCode ? '저장 중...' : '이 모둠 인증코드 등록하기'}
                 </span>
               </button>
+
+              <div className="border-t border-slate-100 pt-4 space-y-2.5">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-slate-800">
+                    반 전체(1~9모둠) 한 번에 만들기
+                  </p>
+                  <p className="text-xs leading-relaxed text-slate-500">
+                    위 「1. 학급 (반) 선택」에 고른 학급의 1모둠~9모둠 인증코드를
+                    무작위 4자리 숫자로 한 번에 생성·저장합니다.
+                  </p>
+                </div>
+
+                {confirmBulkOverwriteClass &&
+                confirmBulkOverwriteClass === codeClassRoom.trim() ? (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+                    <p className="text-xs font-medium text-amber-950">
+                      {confirmBulkOverwriteClass}에 이미 등록된 코드가 있습니다.
+                      1~9모둠 코드를 모두 새로 생성해 덮어쓸까요?
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isBulkGenerating}
+                        onClick={() =>
+                          void executeBulkGenerateCodes(confirmBulkOverwriteClass)
+                        }
+                        className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800 disabled:opacity-60"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>
+                          {isBulkGenerating
+                            ? '일괄 생성 중...'
+                            : '기존 코드 덮어쓰고 일괄 생성'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmBulkOverwriteClass(null)}
+                        className="inline-flex min-h-[38px] items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isSavingCode || isBulkGenerating}
+                    onClick={handleBulkGenerateClick}
+                    className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-emerald-700/40 bg-emerald-50/70 px-4 py-2 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-60"
+                  >
+                    <Sparkles className="h-4 w-4" aria-hidden="true" />
+                    <span>
+                      {isBulkGenerating
+                        ? '일괄 생성 중...'
+                        : '선택 학급 1~9모둠 일괄 생성'}
+                    </span>
+                  </button>
+                )}
+              </div>
             </form>
 
             {codeSaveFeedback && (
@@ -1583,7 +1859,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
             aria-labelledby="code-list-title"
             className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 space-y-4 lg:col-span-7"
           >
-            <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2
                   id="code-list-title"
@@ -1596,27 +1872,77 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   1차시 기록을 볼 수 있습니다.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={onGoToLesson2}
-                className="min-h-[40px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0"
-              >
-                2차시 화면에서 테스트
-              </button>
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                <label className="sr-only" htmlFor="code-list-class-filter">
+                  인증코드 목록 학급 필터
+                </label>
+                <select
+                  id="code-list-class-filter"
+                  value={codeListClassFilter}
+                  onChange={(e) => {
+                    setCodeListClassFilter(e.target.value);
+                    setCopiedCodesNotice('');
+                  }}
+                  className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-emerald-700 focus:outline-none"
+                >
+                  <option value="all">전체 학급 ({groupCodes.length})</option>
+                  {availableClasses.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={filteredGroupCodes.length === 0}
+                  onClick={() => void handleCopyGroupCodes()}
+                  className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 whitespace-nowrap shrink-0"
+                >
+                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>코드 목록 복사</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onGoToLesson2}
+                  className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0"
+                >
+                  2차시 화면에서 테스트
+                </button>
+              </div>
             </div>
 
-            {groupCodes.length === 0 ? (
+            {copiedCodesNotice && (
+              <div
+                role="status"
+                className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs font-medium text-emerald-950"
+              >
+                <span>{copiedCodesNotice}</span>
+                <button
+                  type="button"
+                  onClick={() => setCopiedCodesNotice('')}
+                  aria-label="복사 알림 닫기"
+                  className="rounded p-0.5 text-emerald-800 hover:bg-emerald-100"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </div>
+            )}
+
+            {filteredGroupCodes.length === 0 ? (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-600">
                 <p className="font-semibold text-slate-900">
-                  아직 등록된 모둠 인증코드가 없습니다
+                  {groupCodes.length === 0
+                    ? '아직 등록된 모둠 인증코드가 없습니다'
+                    : `${codeListClassFilter}에 등록된 모둠 인증코드가 없습니다`}
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                  왼쪽에서 학급과 모둠을 고르고 인증코드를 입력해 등록해 주세요.
+                  왼쪽에서 학급과 모둠을 고르고 인증코드를 입력하거나 「선택 학급
+                  1~9모둠 일괄 생성」을 눌러 주세요.
                 </p>
               </div>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {groupCodes.map((entry) => {
+                {filteredGroupCodes.map((entry) => {
                   const obsCount = observations.filter(
                     (o) =>
                       o.classRoom.trim() === entry.classRoom.trim() &&

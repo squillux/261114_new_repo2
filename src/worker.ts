@@ -349,6 +349,23 @@ function validatePhotoDataUrl(
   return { ok: true, value: trimmed };
 }
 
+interface ObservationLiteRow {
+  id: string;
+  class_room: string;
+  student_number: string;
+  author_alias: string;
+  group_name: string;
+  location_category: string;
+  location_detail: string;
+  waste_scene: string;
+  waste_cause: string;
+  sensor_idea: string;
+  has_photo: number;
+  photo_caption: string;
+  privacy_confirmed: number;
+  created_at: string;
+}
+
 function mapObservationRow(row: ObservationRow) {
   return {
     id: row.id,
@@ -362,6 +379,27 @@ function mapObservationRow(row: ObservationRow) {
     wasteCause: row.waste_cause,
     sensorIdea: row.sensor_idea,
     photoDataUrl: row.photo_data_url,
+    hasPhoto: Boolean(row.photo_data_url),
+    photoCaption: row.photo_caption,
+    privacyConfirmed: Boolean(row.privacy_confirmed),
+    createdAt: row.created_at,
+  };
+}
+
+function mapObservationLiteRow(row: ObservationLiteRow) {
+  return {
+    id: row.id,
+    classRoom: row.class_room,
+    classInfo: row.student_number,
+    authorName: row.author_alias,
+    groupName: row.group_name,
+    locationCategory: row.location_category,
+    locationDetail: row.location_detail,
+    wasteScene: row.waste_scene,
+    wasteCause: row.waste_cause,
+    sensorIdea: row.sensor_idea,
+    photoDataUrl: '',
+    hasPhoto: Boolean(row.has_photo),
     photoCaption: row.photo_caption,
     privacyConfirmed: Boolean(row.privacy_confirmed),
     createdAt: row.created_at,
@@ -530,14 +568,69 @@ async function handleApiRequest(
       );
     }
 
+    const requestedClass = (url.searchParams.get('classRoom') || '').trim();
+    const classFilter =
+      requestedClass && requestedClass !== 'all' ? requestedClass : '';
+    const includePhotosParam = url.searchParams.get('includePhotos');
+
     try {
+      const classesResult = await env.DB.prepare(
+        'SELECT DISTINCT class_room FROM observations ORDER BY class_room ASC'
+      ).all<{ class_room: string }>();
+      const availableClasses = (classesResult.results || [])
+        .map((r) => r.class_room)
+        .filter(Boolean);
+
+      if (classFilter) {
+        const result = await env.DB.prepare(
+          'SELECT id, class_room, student_number, author_alias, group_name, location_category, location_detail, waste_scene, waste_cause, sensor_idea, photo_data_url, photo_caption, privacy_confirmed, created_at FROM observations WHERE class_room = ? ORDER BY created_at DESC LIMIT 1000'
+        )
+          .bind(classFilter)
+          .all<ObservationRow>();
+
+        const mapped = (result.results || []).map(mapObservationRow);
+        return jsonResponse({
+          ok: true,
+          observations: mapped,
+          totalCount: mapped.length,
+          availableClasses,
+          photosDeferred: false,
+        });
+      }
+
+      const countRow = await env.DB.prepare(
+        'SELECT COUNT(*) AS total FROM observations'
+      ).first<{ total: number }>();
+      const totalCount = Number(countRow?.total || 0);
+
+      const shouldDeferPhotos =
+        includePhotosParam === '0' ||
+        (includePhotosParam !== '1' && totalCount > 120);
+
+      if (shouldDeferPhotos) {
+        const result = await env.DB.prepare(
+          "SELECT id, class_room, student_number, author_alias, group_name, location_category, location_detail, waste_scene, waste_cause, sensor_idea, (photo_data_url != '') AS has_photo, photo_caption, privacy_confirmed, created_at FROM observations ORDER BY created_at DESC LIMIT 2000"
+        ).all<ObservationLiteRow>();
+
+        return jsonResponse({
+          ok: true,
+          observations: (result.results || []).map(mapObservationLiteRow),
+          totalCount,
+          availableClasses,
+          photosDeferred: true,
+        });
+      }
+
       const result = await env.DB.prepare(
-        'SELECT id, class_room, student_number, author_alias, group_name, location_category, location_detail, waste_scene, waste_cause, sensor_idea, photo_data_url, photo_caption, privacy_confirmed, created_at FROM observations ORDER BY created_at DESC LIMIT 500'
+        'SELECT id, class_room, student_number, author_alias, group_name, location_category, location_detail, waste_scene, waste_cause, sensor_idea, photo_data_url, photo_caption, privacy_confirmed, created_at FROM observations ORDER BY created_at DESC LIMIT 1000'
       ).all<ObservationRow>();
 
       return jsonResponse({
         ok: true,
         observations: (result.results || []).map(mapObservationRow),
+        totalCount,
+        availableClasses,
+        photosDeferred: false,
       });
     } catch {
       return jsonResponse(
@@ -545,6 +638,58 @@ async function handleApiRequest(
           ok: false,
           error: 'D1 데이터베이스에서 관찰 일지를 불러오지 못했습니다.',
         },
+        500
+      );
+    }
+  }
+
+  if (
+    method === 'GET' &&
+    path.startsWith('/api/observations/') &&
+    path.endsWith('/photo')
+  ) {
+    const authorized = await isTeacherAuthenticated(request, env);
+    if (!authorized) {
+      return jsonResponse(
+        { ok: false, error: '교사 로그인 후에만 사진을 불러올 수 있습니다.' },
+        401
+      );
+    }
+
+    const rawId = path.slice(
+      '/api/observations/'.length,
+      path.length - '/photo'.length
+    );
+    const id = decodeURIComponent(rawId).trim();
+    if (!id || id.length > 80) {
+      return jsonResponse(
+        { ok: false, error: '올바른 관찰 일지 ID가 아닙니다.' },
+        400
+      );
+    }
+
+    try {
+      const row = await env.DB.prepare(
+        'SELECT photo_data_url FROM observations WHERE id = ?'
+      )
+        .bind(id)
+        .first<{ photo_data_url: string }>();
+
+      if (!row) {
+        return jsonResponse(
+          { ok: false, error: '해당 관찰 일지를 찾지 못했습니다.' },
+          404
+        );
+      }
+
+      return jsonResponse({
+        ok: true,
+        id,
+        photoDataUrl: row.photo_data_url || '',
+      });
+    } catch {
+      return jsonResponse(
+        { ok: false, error: '사진을 불러오는 중 오류가 발생했습니다.' },
         500
       );
     }
@@ -803,6 +948,93 @@ async function handleApiRequest(
     }
   }
 
+  if (method === 'POST' && path === '/api/group-codes/bulk') {
+    const authorized = await isTeacherAuthenticated(request, env);
+    if (!authorized) {
+      return jsonResponse(
+        { ok: false, error: '교사 로그인 후에만 모둠 인증코드를 일괄 등록할 수 있습니다.' },
+        401
+      );
+    }
+
+    const parsed = await readJsonBody(request);
+    if (!parsed.ok) return parsed.response;
+
+    const classRoom = readRequiredString(
+      parsed.data,
+      'classRoom',
+      '학급(반)',
+      30
+    );
+    if (!classRoom.ok) {
+      return jsonResponse({ ok: false, error: classRoom.error }, 400);
+    }
+
+    const rawEntries = parsed.data.entries;
+    if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
+      return jsonResponse(
+        { ok: false, error: '등록할 모둠 인증코드 목록이 비어 있습니다.' },
+        400
+      );
+    }
+    if (rawEntries.length > 30) {
+      return jsonResponse(
+        { ok: false, error: '한 번에 최대 30개 모둠까지만 일괄 등록할 수 있습니다.' },
+        400
+      );
+    }
+
+    const validatedEntries: Array<{ groupName: string; code: string }> = [];
+    for (const raw of rawEntries) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+        return jsonResponse(
+          { ok: false, error: '일괄 등록 항목 형식이 올바르지 않습니다.' },
+          400
+        );
+      }
+      const item = raw as Record<string, unknown>;
+      const groupName = readRequiredString(item, 'groupName', '모둠 이름', 30);
+      if (!groupName.ok) {
+        return jsonResponse({ ok: false, error: groupName.error }, 400);
+      }
+      const code = readRequiredString(item, 'code', '모둠 인증코드', 24);
+      if (!code.ok) {
+        return jsonResponse({ ok: false, error: code.error }, 400);
+      }
+      validatedEntries.push({
+        groupName: groupName.value,
+        code: code.value,
+      });
+    }
+
+    const updatedAt = new Date().toISOString();
+    try {
+      const stmt = env.DB.prepare(
+        'INSERT INTO group_auth_codes (class_room, group_name, auth_code, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(class_room, group_name) DO UPDATE SET auth_code = excluded.auth_code, updated_at = excluded.updated_at'
+      );
+      await env.DB.batch(
+        validatedEntries.map((item) =>
+          stmt.bind(classRoom.value, item.groupName, item.code, updatedAt)
+        )
+      );
+
+      return jsonResponse({
+        ok: true,
+        entries: validatedEntries.map((item) => ({
+          classRoom: classRoom.value,
+          groupName: item.groupName,
+          code: item.code,
+          updatedAt,
+        })),
+      });
+    } catch {
+      return jsonResponse(
+        { ok: false, error: '모둠 인증코드를 일괄 저장하지 못했습니다.' },
+        500
+      );
+    }
+  }
+
   if (method === 'DELETE' && path === '/api/group-codes') {
     const authorized = await isTeacherAuthenticated(request, env);
     if (!authorized) {
@@ -927,9 +1159,18 @@ async function handleApiRequest(
         .bind(classRoom.value, groupName.value)
         .all<ObservationRow>();
 
+      const existingTopicRow = await env.DB.prepare(
+        'SELECT id, class_room, group_name, group_members, selected_location, reference_photo_data_url, project_title, core_question, selection_reason, control_condition_when, control_condition_then, control_condition_draft, created_at FROM group_topics WHERE class_room = ? AND group_name = ? LIMIT 1'
+      )
+        .bind(classRoom.value, groupName.value)
+        .first<GroupTopicRow>();
+
       return jsonResponse({
         verified: true,
         observations: (obsResult.results || []).map(mapObservationRow),
+        existingTopic: existingTopicRow
+          ? mapGroupTopicRow(existingTopicRow)
+          : null,
       });
     } catch {
       return jsonResponse(
@@ -956,7 +1197,7 @@ async function handleApiRequest(
 
     try {
       const result = await env.DB.prepare(
-        'SELECT id, class_room, group_name, group_members, selected_location, reference_photo_data_url, project_title, core_question, selection_reason, control_condition_when, control_condition_then, control_condition_draft, created_at FROM group_topics ORDER BY created_at DESC LIMIT 200'
+        'SELECT id, class_room, group_name, group_members, selected_location, reference_photo_data_url, project_title, core_question, selection_reason, control_condition_when, control_condition_then, control_condition_draft, created_at FROM group_topics ORDER BY created_at DESC LIMIT 500'
       ).all<GroupTopicRow>();
 
       return jsonResponse({

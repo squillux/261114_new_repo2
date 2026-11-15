@@ -117,6 +117,8 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitFeedback, setSubmitFeedback] =
     useState<ApiSubmitTopicResult | null>(null);
+  const [isFlowMobileExpanded, setIsFlowMobileExpanded] = useState(false);
+  const [existingTopicNotice, setExistingTopicNotice] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const nativeCaptureInputRef = useRef<HTMLInputElement | null>(null);
@@ -339,7 +341,8 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
         targetGroup,
         authCodeInput.trim(),
         groupCodes,
-        observations
+        observations,
+        topics
       );
 
       if (!result.verified) {
@@ -370,18 +373,42 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
         setFormGroupPreset('직접 입력');
       }
 
-      setForm((prev) => {
-        baselineFormRef.current = {
-          ...baselineFormRef.current,
+      if (result.existingTopic) {
+        const existing = result.existingTopic;
+        const loaded: GroupTopicInput = {
           classRoom: targetClass,
           groupName: targetGroup,
+          groupMembers: existing.groupMembers || '',
+          selectedLocation: existing.selectedLocation || '',
+          referencePhotoDataUrl: existing.referencePhotoDataUrl || '',
+          projectTitle: existing.projectTitle || '',
+          coreQuestion: existing.coreQuestion || '',
+          selectionReason: existing.selectionReason || '',
+          controlConditionWhen: existing.controlConditionWhen || '',
+          controlConditionThen: existing.controlConditionThen || '',
+          controlConditionDraft: existing.controlConditionDraft || '',
         };
-        return {
-          ...prev,
-          classRoom: targetClass,
-          groupName: targetGroup,
-        };
-      });
+        baselineFormRef.current = loaded;
+        setForm(loaded);
+        setErrors({});
+        setExistingTopicNotice(
+          '이미 제출한 우리 모둠 주제를 불러왔습니다. 수정 후 다시 제출하면 업데이트됩니다.'
+        );
+      } else {
+        setExistingTopicNotice('');
+        setForm((prev) => {
+          baselineFormRef.current = {
+            ...baselineFormRef.current,
+            classRoom: targetClass,
+            groupName: targetGroup,
+          };
+          return {
+            ...prev,
+            classRoom: targetClass,
+            groupName: targetGroup,
+          };
+        });
+      }
     } finally {
       setIsVerifying(false);
     }
@@ -393,6 +420,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
     setAuthCodeInput('');
     setVerifyError('');
     setVerifyNotice('');
+    setExistingTopicNotice('');
     setIsLesson1PickerOpen(false);
     setSelectedLesson1ObsId('');
   };
@@ -582,6 +610,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
       }
 
       onTopicSubmitted(result);
+      setExistingTopicNotice('');
       setAdoptedSensorIdea('');
       setIsLesson1PickerOpen(false);
       setSelectedLesson1ObsId('');
@@ -644,13 +673,33 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
         aria-labelledby="lesson2-flow-title"
         className="rounded-xl border border-slate-200 bg-white p-5 space-y-4"
       >
-        <h2
-          id="lesson2-flow-title"
-          className="text-base font-semibold text-slate-900"
+        <div className="flex items-center justify-between gap-3">
+          <h2
+            id="lesson2-flow-title"
+            className="text-base font-semibold text-slate-900"
+          >
+            2차시 진행 순서
+          </h2>
+          <button
+            type="button"
+            onClick={() => setIsFlowMobileExpanded((prev) => !prev)}
+            aria-expanded={isFlowMobileExpanded}
+            className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 md:hidden whitespace-nowrap"
+          >
+            <span>{isFlowMobileExpanded ? '접기' : '순서 보기'}</span>
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform ${
+                isFlowMobileExpanded ? 'rotate-180' : ''
+              }`}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+        <ol
+          className={`${
+            isFlowMobileExpanded ? 'block' : 'hidden'
+          } md:block space-y-4 text-sm text-slate-700`}
         >
-          2차시 진행 순서
-        </h2>
-        <ol className="space-y-4 text-sm text-slate-700">
           <li className="flex items-start gap-3">
             <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs font-semibold text-slate-700 tabular-nums">
               1
@@ -1070,131 +1119,212 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
               </p>
             </div>
 
+            {existingTopicNotice && (
+              <div
+                role="status"
+                className="mt-3 flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-3.5 text-xs leading-relaxed text-emerald-950"
+              >
+                <Check
+                  className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700"
+                  aria-hidden="true"
+                />
+                <p className="font-medium">{existingTopicNotice}</p>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} noValidate className="mt-5 space-y-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="topic-class-room"
-                    className="block text-sm font-semibold text-slate-900"
-                  >
-                    학급 (반)
-                  </label>
-                  <select
-                    id="topic-class-room"
-                    value={formClassPreset}
-                    onChange={(e) => handleFormClassPresetChange(e.target.value)}
-                    className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
-                  >
-                    {CLASS_ROOM_PRESETS.map((room) => (
-                      <option key={room} value={room}>
-                        {room}
-                      </option>
-                    ))}
-                  </select>
-                  {formClassPreset === '직접 입력' && (
+              {unlockedTarget ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <p className="text-sm font-semibold text-slate-900">
+                      인증된 학급·모둠 (고정됨)
+                    </p>
+                    <div className="flex min-h-[46px] items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3.5 py-2.5 text-sm font-semibold text-emerald-950">
+                      <span>
+                        {unlockedTarget.classRoom} · {unlockedTarget.groupName}
+                      </span>
+                      <Lock
+                        className="h-4 w-4 shrink-0 text-emerald-700"
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <p className="text-xs leading-relaxed text-slate-500">
+                      다른 모둠 주제를 잘못 덮어쓰지 않도록 인증한 모둠으로
+                      고정됩니다. 다른 모둠으로 바꾸려면 위 1단계에서 「다른
+                      모둠으로 전환」을 눌러 주세요.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="topic-group-members"
+                      className="block text-sm font-semibold text-slate-900"
+                    >
+                      함께 정한 모둠원
+                    </label>
                     <input
+                      id="topic-group-members"
                       type="text"
-                      value={form.classRoom}
+                      value={form.groupMembers}
                       onChange={(e) => {
-                        setForm({ ...form, classRoom: e.target.value });
-                        if (errors.classRoom) {
-                          setErrors((prev) => ({ ...prev, classRoom: '' }));
+                        setForm({ ...form, groupMembers: e.target.value });
+                        if (errors.groupMembers) {
+                          setErrors((prev) => ({ ...prev, groupMembers: '' }));
                         }
                       }}
-                      placeholder="예: 1학년 13반"
-                      aria-label="학급 직접 입력"
-                      maxLength={20}
-                      className="mt-1.5 min-h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
+                      placeholder="예: 김에코, 이센서, 박코딩"
+                      maxLength={80}
+                      className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
                     />
-                  )}
-                  {errors.classRoom && (
-                    <p
-                      role="alert"
-                      className="text-xs font-medium text-rose-700"
-                    >
-                      {errors.classRoom}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="topic-group-members"
-                    className="block text-sm font-semibold text-slate-900"
-                  >
-                    함께 정한 모둠원
-                  </label>
-                  <input
-                    id="topic-group-members"
-                    type="text"
-                    value={form.groupMembers}
-                    onChange={(e) => {
-                      setForm({ ...form, groupMembers: e.target.value });
-                      if (errors.groupMembers) {
-                        setErrors((prev) => ({ ...prev, groupMembers: '' }));
-                      }
-                    }}
-                    placeholder="예: 김에코, 이센서, 박코딩"
-                    maxLength={80}
-                    className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
-                  />
-                  {errors.groupMembers && (
-                    <p
-                      role="alert"
-                      className="text-xs font-medium text-rose-700"
-                    >
-                      {errors.groupMembers}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-semibold text-slate-900">
-                  1. 모둠 선택
-                </legend>
-                <div className="flex flex-wrap gap-2">
-                  {GROUP_NAME_PRESETS.map((preset) => {
-                    const selected = formGroupPreset === preset;
-                    return (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => handleFormGroupPresetSelect(preset)}
-                        aria-pressed={selected}
-                        className={`min-h-[44px] rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
-                          selected
-                            ? 'border-emerald-700 bg-emerald-700 text-white'
-                            : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                        }`}
+                    {errors.groupMembers && (
+                      <p
+                        role="alert"
+                        className="text-xs font-medium text-rose-700"
                       >
-                        {preset}
-                      </button>
-                    );
-                  })}
+                        {errors.groupMembers}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                {formGroupPreset === '직접 입력' && (
-                  <input
-                    type="text"
-                    value={form.groupName}
-                    onChange={(e) => {
-                      setForm({ ...form, groupName: e.target.value });
-                      if (errors.groupName) {
-                        setErrors((prev) => ({ ...prev, groupName: '' }));
-                      }
-                    }}
-                    placeholder="예: 10모둠"
-                    aria-label="모둠 이름 직접 입력"
-                    maxLength={30}
-                    className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
-                  />
-                )}
-                {errors.groupName && (
-                  <p role="alert" className="text-xs font-medium text-rose-700">
-                    {errors.groupName}
-                  </p>
-                )}
-              </fieldset>
+              ) : (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="topic-class-room"
+                        className="block text-sm font-semibold text-slate-900"
+                      >
+                        학급 (반)
+                      </label>
+                      <select
+                        id="topic-class-room"
+                        value={formClassPreset}
+                        onChange={(e) =>
+                          handleFormClassPresetChange(e.target.value)
+                        }
+                        className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                      >
+                        {CLASS_ROOM_PRESETS.map((room) => (
+                          <option key={room} value={room}>
+                            {room}
+                          </option>
+                        ))}
+                      </select>
+                      {formClassPreset === '직접 입력' && (
+                        <input
+                          type="text"
+                          value={form.classRoom}
+                          onChange={(e) => {
+                            setForm({ ...form, classRoom: e.target.value });
+                            if (errors.classRoom) {
+                              setErrors((prev) => ({
+                                ...prev,
+                                classRoom: '',
+                              }));
+                            }
+                          }}
+                          placeholder="예: 1학년 13반"
+                          aria-label="학급 직접 입력"
+                          maxLength={20}
+                          className="mt-1.5 min-h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
+                        />
+                      )}
+                      {errors.classRoom && (
+                        <p
+                          role="alert"
+                          className="text-xs font-medium text-rose-700"
+                        >
+                          {errors.classRoom}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="topic-group-members"
+                        className="block text-sm font-semibold text-slate-900"
+                      >
+                        함께 정한 모둠원
+                      </label>
+                      <input
+                        id="topic-group-members"
+                        type="text"
+                        value={form.groupMembers}
+                        onChange={(e) => {
+                          setForm({ ...form, groupMembers: e.target.value });
+                          if (errors.groupMembers) {
+                            setErrors((prev) => ({
+                              ...prev,
+                              groupMembers: '',
+                            }));
+                          }
+                        }}
+                        placeholder="예: 김에코, 이센서, 박코딩"
+                        maxLength={80}
+                        className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                      />
+                      {errors.groupMembers && (
+                        <p
+                          role="alert"
+                          className="text-xs font-medium text-rose-700"
+                        >
+                          {errors.groupMembers}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <fieldset className="space-y-2">
+                    <legend className="text-sm font-semibold text-slate-900">
+                      1. 모둠 선택
+                    </legend>
+                    <div className="flex flex-wrap gap-2">
+                      {GROUP_NAME_PRESETS.map((preset) => {
+                        const selected = formGroupPreset === preset;
+                        return (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => handleFormGroupPresetSelect(preset)}
+                            aria-pressed={selected}
+                            className={`min-h-[44px] rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
+                              selected
+                                ? 'border-emerald-700 bg-emerald-700 text-white'
+                                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {formGroupPreset === '직접 입력' && (
+                      <input
+                        type="text"
+                        value={form.groupName}
+                        onChange={(e) => {
+                          setForm({ ...form, groupName: e.target.value });
+                          if (errors.groupName) {
+                            setErrors((prev) => ({ ...prev, groupName: '' }));
+                          }
+                        }}
+                        placeholder="예: 10모둠"
+                        aria-label="모둠 이름 직접 입력"
+                        maxLength={30}
+                        className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
+                      />
+                    )}
+                    {errors.groupName && (
+                      <p
+                        role="alert"
+                        className="text-xs font-medium text-rose-700"
+                      >
+                        {errors.groupName}
+                      </p>
+                    )}
+                  </fieldset>
+                </>
+              )}
 
               <div className="space-y-3">
                 <label
