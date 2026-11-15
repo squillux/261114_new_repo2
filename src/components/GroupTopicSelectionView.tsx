@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   Clock,
+  Cpu,
   Images,
   Info,
   KeyRound,
@@ -16,6 +17,7 @@ import {
   Trash2,
   Unlock,
   Upload,
+  Users,
   X,
 } from 'lucide-react';
 import {
@@ -40,6 +42,7 @@ interface GroupTopicSelectionViewProps {
   topics: GroupTopicRecord[];
   groupCodes: GroupAuthCode[];
   storageStatus: StorageConnectionStatus;
+  statusDetail?: string;
   isCheckingStorage: boolean;
   onRetryConnection: () => void;
   onTopicSubmitted: (result: ApiSubmitTopicResult) => void;
@@ -66,6 +69,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
   topics,
   groupCodes,
   storageStatus,
+  statusDetail,
   isCheckingStorage,
   onRetryConnection,
   onTopicSubmitted,
@@ -629,10 +633,82 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
 
       <StorageStatusNotice
         status={storageStatus}
+        statusDetail={statusDetail}
         onRetryCheck={onRetryConnection}
         isChecking={isCheckingStorage}
         context="student"
       />
+
+      {/* 2차시 활동 흐름 */}
+      <section
+        aria-labelledby="lesson2-flow-title"
+        className="rounded-xl border border-slate-200 bg-white p-5 space-y-4"
+      >
+        <h2
+          id="lesson2-flow-title"
+          className="text-base font-semibold text-slate-900"
+        >
+          2차시 진행 순서
+        </h2>
+        <ol className="space-y-4 text-sm text-slate-700">
+          <li className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs font-semibold text-slate-700 tabular-nums">
+              1
+            </span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 font-semibold text-slate-900">
+                <KeyRound
+                  className="h-4 w-4 shrink-0 text-slate-500"
+                  aria-hidden="true"
+                />
+                <span>모둠 인증 · 1차시 관찰 일지와 사진 불러오기</span>
+              </div>
+              <p className="leading-relaxed text-slate-600">
+                선생님께 안내받은 학급·모둠 인증코드를 입력해 모둠원들이 1차시에
+                기록한 현장 사진과 관찰 일지를 한자리에 모읍니다.
+              </p>
+            </div>
+          </li>
+
+          <li className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-xs font-semibold text-emerald-800 tabular-nums">
+              2
+            </span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 font-semibold text-slate-900">
+                <Users
+                  className="h-4 w-4 shrink-0 text-emerald-700"
+                  aria-hidden="true"
+                />
+                <span>모둠 토의 · 해결할 학교 공간과 핵심 질문 정하기</span>
+              </div>
+              <p className="leading-relaxed text-slate-600">
+                1차시 기록을 비교해 단순한 절약 구호가 아닌 센서와 코딩으로
+                자동 해결할 문제 1가지를 고르고 핵심 질문에 합의합니다.
+              </p>
+            </div>
+          </li>
+
+          <li className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs font-semibold text-slate-700 tabular-nums">
+              3
+            </span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 font-semibold text-slate-900">
+                <Cpu
+                  className="h-4 w-4 shrink-0 text-slate-500"
+                  aria-hidden="true"
+                />
+                <span>주제 확정 · 자연어 제어 조건 작성 및 대표 제출</span>
+              </div>
+              <p className="leading-relaxed text-slate-600">
+                「만약 ~(센서 입력) → ~(작동 출력)」 제어 조건 초안을 세우고
+                모둠 대표 1명이 제출해 다음 차시 피지컬 컴퓨팅 설계로 이어집니다.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
 
       {/* 상단 구역: 모둠 인증코드 입력 및 1차시 개인별 일지 확인 */}
       <section

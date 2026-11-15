@@ -2,7 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { TopBar, type AppView } from './components/TopBar';
 import { StorageStatusNotice } from './components/StorageStatusNotice';
-import { LessonGuidePanel } from './components/LessonGuidePanel';
+import {
+  Lesson1FlowSection,
+  Lesson1PageHeader,
+  LessonGuidePanel,
+} from './components/LessonGuidePanel';
 import { StudentObservationForm } from './components/StudentObservationForm';
 import { GroupTopicSelectionView } from './components/GroupTopicSelectionView';
 import {
@@ -550,6 +554,8 @@ export default function App() {
 
         {activeView === 'lesson1' && (
           <div className="space-y-6">
+            <Lesson1PageHeader />
+
             <StorageStatusNotice
               status={storageStatus}
               statusDetail={apiStatusDetail}
@@ -557,6 +563,8 @@ export default function App() {
               isChecking={isCheckingStorage}
               context="student"
             />
+
+            <Lesson1FlowSection />
 
             <div className="grid gap-8 lg:grid-cols-12 lg:items-start">
               <div className="lg:col-span-5">
@@ -581,6 +589,7 @@ export default function App() {
             topics={studentTopics}
             groupCodes={storageStatus === 'connected' ? [] : previewCodes}
             storageStatus={storageStatus}
+            statusDetail={apiStatusDetail}
             isCheckingStorage={isCheckingStorage}
             onRetryConnection={checkStorageAndLoad}
             onTopicSubmitted={handleTopicSubmitted}

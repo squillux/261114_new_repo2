@@ -445,7 +445,7 @@ export async function submitObservation(
       syncState: 'preview-only',
     },
     message:
-      '저장되지 않음 (저장 준비 중): 아직 Cloudflare D1 저장소가 연결되지 않아 서버에 저장되지 않았습니다. 현재 브라우저 화면 미리보기에서만 확인할 수 있습니다.',
+      '미리보기 모드 (서버에 저장되지 않음): 현재 제작 미리보기 화면에서는 Cloudflare D1에 저장되지 않으며, 이 브라우저에서만 흐름을 확인할 수 있습니다. Cloudflare 배포 후 실제 저장됩니다.',
   };
 }
 
@@ -597,7 +597,7 @@ export async function submitGroupTopic(
       syncState: 'preview-only',
     },
     message:
-      '저장되지 않음 (저장 준비 중): 아직 Cloudflare D1 저장소가 연결되지 않아 서버에 저장되지 않았습니다. 현재 브라우저 화면 미리보기에서만 확인할 수 있습니다.',
+      '미리보기 모드 (서버에 저장되지 않음): 현재 제작 미리보기 화면에서는 Cloudflare D1에 저장되지 않으며, 이 브라우저에서만 흐름을 확인할 수 있습니다. Cloudflare 배포 후 실제 저장됩니다.',
   };
 }
 
@@ -759,7 +759,7 @@ export async function saveGroupCode(
       syncState: 'preview-only',
     },
     message:
-      '저장되지 않음 (저장 준비 중): 아직 Cloudflare D1 저장소가 연결되지 않아 현재 브라우저 임시 미리보기에만 반영되었습니다.',
+      '미리보기 모드 (서버에 저장되지 않음): 현재 제작 미리보기 화면에서는 Cloudflare D1에 저장되지 않아 이 브라우저 임시 미리보기에만 반영되었습니다. Cloudflare 배포 후 실제 저장됩니다.',
   };
 }
 

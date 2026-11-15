@@ -1,5 +1,11 @@
 import React from 'react';
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Info,
+  Loader2,
+  RefreshCw,
+} from 'lucide-react';
 import type { StorageConnectionStatus } from '../types/observation';
 
 interface StorageStatusNoticeProps {
@@ -73,25 +79,60 @@ export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
     );
   }
 
+  // Worker가 응답했지만 D1 바인딩/테이블에 실제 오류가 있는 경우
+  if (statusDetail) {
+    return (
+      <div
+        role="status"
+        className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50/80 px-4 py-3.5 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="flex items-start gap-2.5">
+          <AlertCircle
+            className="mt-0.5 h-4 w-4 shrink-0 text-amber-700"
+            aria-hidden="true"
+          />
+          <div className="space-y-0.5 leading-relaxed">
+            <p className="font-semibold">Cloudflare D1 저장소 확인 필요</p>
+            <p className="text-xs sm:text-sm text-amber-900">{statusDetail}</p>
+          </div>
+        </div>
+        {onRetryCheck && (
+          <button
+            type="button"
+            onClick={onRetryCheck}
+            disabled={isChecking}
+            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 self-start rounded-lg border border-amber-300 bg-white px-3.5 py-2 text-xs font-semibold text-amber-950 hover:bg-amber-100/60 whitespace-nowrap shrink-0 sm:self-auto"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isChecking ? 'animate-spin' : ''}`}
+              aria-hidden="true"
+            />
+            연결 다시 확인
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // 제작 미리보기(Vite dev) 환경: Worker가 아직 실행되지 않는 상태
   return (
     <div
       role="status"
-      className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50/80 px-4 py-3.5 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-3 text-sm text-slate-800 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex items-start gap-2.5">
-        <AlertCircle
-          className="mt-0.5 h-4 w-4 shrink-0 text-amber-700"
+        <Info
+          className="mt-0.5 h-4 w-4 shrink-0 text-slate-600"
           aria-hidden="true"
         />
         <div className="space-y-0.5 leading-relaxed">
-          <p className="font-semibold">
-            저장 준비 중 · Cloudflare D1 저장소 미연결
+          <p className="font-semibold text-slate-900">
+            미리보기 모드 · 서버 저장은 Cloudflare 배포 후 연결됩니다
           </p>
-          <p className="text-xs sm:text-sm text-amber-900">
-            {statusDetail ||
-              (context === 'student'
-                ? '아직 서버 저장소가 연결되지 않아 입력한 내용은 서버에 저장되지 않습니다. 현재 브라우저 화면 미리보기에서만 흐름을 확인할 수 있습니다.'
-                : '아직 /api 저장소가 연결되지 않아 서버의 학생 응답을 불러올 수 없습니다. 아래에는 현재 브라우저의 임시 미리보기 기록만 표시됩니다.')}
+          <p className="text-xs sm:text-sm text-slate-600">
+            {context === 'student'
+              ? '현재는 제작 미리보기 화면으로, 입력한 내용은 이 브라우저에서만 임시 체험할 수 있고 서버에는 저장되지 않습니다. Cloudflare 배포 주소에서는 D1 데이터베이스에 자동 저장됩니다.'
+              : 'wrangler.jsonc의 classroom-db ID 설정은 완료되었으나, 현재 미리보기(Vite) 화면에서는 Worker가 실행되지 않아 D1과 통신할 수 없습니다. 실제 저장·교사 로그인은 Cloudflare 배포(npx wrangler deploy) 후 동작합니다.'}
           </p>
         </div>
       </div>
@@ -100,7 +141,7 @@ export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
           type="button"
           onClick={onRetryCheck}
           disabled={isChecking}
-          className="inline-flex min-h-[44px] items-center justify-center gap-1.5 self-start rounded-lg border border-amber-300 bg-white px-3.5 py-2 text-xs font-semibold text-amber-950 hover:bg-amber-100/60 whitespace-nowrap shrink-0 sm:self-auto"
+          className="inline-flex min-h-[40px] items-center justify-center gap-1.5 self-start rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0 sm:self-auto"
         >
           <RefreshCw
             className={`h-3.5 w-3.5 ${isChecking ? 'animate-spin' : ''}`}
@@ -112,3 +153,4 @@ export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
     </div>
   );
 };
+
