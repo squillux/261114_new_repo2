@@ -21,23 +21,23 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-4 py-3.5 sm:px-6">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-5 gap-y-2 px-4 py-3.5 sm:px-6">
         <button
           type="button"
           onClick={() => onSelectView('lesson0')}
-          className="text-left text-lg font-bold tracking-tight text-slate-900 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+          className="text-left text-lg font-bold tracking-tight text-slate-900 shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
         >
           스마트 에코 스쿨
         </button>
 
         <nav
           aria-label="수업 단계 이동"
-          className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600"
+          className="hidden md:flex flex-wrap items-center gap-x-6 gap-y-1 text-sm font-medium text-slate-600"
         >
           <button
             type="button"
             onClick={() => onSelectView('lesson1')}
-            className={`py-1.5 border-b-2 transition-colors whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
+            className={`py-1.5 border-b-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
               activeView === 'lesson1'
                 ? 'border-emerald-700 text-emerald-800 font-semibold'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -48,7 +48,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={() => onSelectView('lesson2')}
-            className={`py-1.5 border-b-2 transition-colors whitespace-nowrap shrink-0 tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
+            className={`py-1.5 border-b-2 transition-colors tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
               activeView === 'lesson2'
                 ? 'border-emerald-700 text-emerald-800 font-semibold'
                 : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -58,7 +58,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             {showCounts ? ` (${topicCount})` : ''}
           </button>
           {isTeacherMode && (
-            <span className="py-1.5 border-b-2 border-emerald-700 text-emerald-800 font-semibold whitespace-nowrap shrink-0 tabular-nums">
+            <span className="py-1.5 border-b-2 border-emerald-700 text-emerald-800 font-semibold tabular-nums">
               교사 확인{showCounts ? ` (${observationCount + topicCount})` : ''}
             </span>
           )}
@@ -69,12 +69,12 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={() => onSelectView('lesson1')}
-              className="min-h-[40px] rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+              className="min-h-[40px] rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
             >
               학생 활동 화면
             </button>
           ) : (
-            <span className="hidden sm:inline-block text-xs font-medium text-slate-500 whitespace-nowrap">
+            <span className="hidden lg:inline-block text-xs font-medium text-slate-500">
               중학교 1학년 · 읽걷쓰AI 프로젝트
             </span>
           )}
@@ -91,7 +91,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={() => onSelectView('lesson1')}
-            className={`min-h-[44px] rounded-lg px-2 text-xs font-semibold whitespace-nowrap shrink-0 ${
+            className={`min-h-[44px] rounded-lg px-2 py-1.5 text-center text-xs font-semibold leading-snug ${
               activeView === 'lesson1'
                 ? 'bg-white text-emerald-800 shadow-xs ring-1 ring-slate-200'
                 : 'text-slate-700 hover:bg-white'
@@ -102,7 +102,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={() => onSelectView('lesson2')}
-            className={`min-h-[44px] rounded-lg px-2 text-xs font-semibold whitespace-nowrap shrink-0 ${
+            className={`min-h-[44px] rounded-lg px-2 py-1.5 text-center text-xs font-semibold leading-snug ${
               activeView === 'lesson2'
                 ? 'bg-white text-emerald-800 shadow-xs ring-1 ring-slate-200'
                 : 'text-slate-700 hover:bg-white'
@@ -114,7 +114,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={() => onSelectView('teacher')}
-              className="min-h-[44px] rounded-lg px-2 text-xs font-semibold tabular-nums whitespace-nowrap shrink-0 bg-white text-emerald-800 shadow-xs ring-1 ring-slate-200"
+              className="min-h-[44px] rounded-lg px-2 py-1.5 text-center text-xs font-semibold leading-snug tabular-nums bg-white text-emerald-800 shadow-xs ring-1 ring-slate-200"
             >
               교사 확인{showCounts ? ` (${observationCount + topicCount})` : ''}
             </button>

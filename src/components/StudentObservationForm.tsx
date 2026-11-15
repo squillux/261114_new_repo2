@@ -34,7 +34,7 @@ interface StudentObservationFormProps {
 }
 
 const INITIAL_FORM: ObservationInput = {
-  classRoom: '1학년 1반',
+  classRoom: '1반',
   classInfo: '',
   authorName: '',
   groupName: '1모둠',
@@ -56,7 +56,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
   onDirtyChange,
 }) => {
   const [form, setForm] = useState<ObservationInput>(INITIAL_FORM);
-  const [classRoomPreset, setClassRoomPreset] = useState<string>('1학년 1반');
+  const [classRoomPreset, setClassRoomPreset] = useState<string>('1반');
   const [groupPreset, setGroupPreset] = useState<string>('1모둠');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [photoError, setPhotoError] = useState<string>('');
@@ -257,11 +257,11 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
     let nextClassRoom = form.classRoom;
     let nextPreset = classRoomPreset;
 
-    // 5자리 학번(예: 10101 -> 1학년 1반, 11201 -> 1학년 12반) 입력 시 반 자동 맞춤
+    // 5자리 학번(예: 10101 -> 1반, 11201 -> 12반) 입력 시 반 자동 맞춤
     const trimmed = rawValue.trim();
     if (/^1(0[1-9]|1[0-2])\d{2}$/.test(trimmed) && classRoomPreset !== '직접 입력') {
       const classNum = Number(trimmed.slice(1, 3));
-      const matched = `1학년 ${classNum}반`;
+      const matched = `${classNum}반`;
       if ((CLASS_ROOM_PRESETS as readonly string[]).includes(matched)) {
         nextClassRoom = matched;
         nextPreset = matched;
@@ -349,8 +349,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
     }
 
     if (!form.classInfo.trim()) {
-      nextErrors.classInfo =
-        '학번을 입력해 주세요. (예: 1학년 1반 1번 -> 10101)';
+      nextErrors.classInfo = '학번을 입력해 주세요. (예: 10101)';
     }
 
     if (!form.authorName.trim()) {
@@ -468,8 +467,8 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
 
         <form onSubmit={handleSubmit} noValidate className="mt-5 space-y-5">
           {/* 1. 학급, 학번, 이름 */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-1.5">
+          <div className="grid gap-4 sm:grid-cols-12">
+            <div className="space-y-1.5 sm:col-span-3">
               <label
                 htmlFor="class-room-select"
                 className="block text-sm font-semibold text-slate-900"
@@ -498,7 +497,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                       setErrors((prev) => ({ ...prev, classRoom: '' }));
                     }
                   }}
-                  placeholder="예: 1학년 13반"
+                  placeholder="예: 13반"
                   aria-label="학급 직접 입력"
                   maxLength={20}
                   className="mt-1.5 min-h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
@@ -511,7 +510,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
               )}
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-4">
               <label
                 htmlFor="class-info"
                 className="block text-sm font-semibold text-slate-900"
@@ -524,7 +523,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                 inputMode="numeric"
                 value={form.classInfo}
                 onChange={(e) => handleStudentIdChange(e.target.value)}
-                placeholder="예: 1학년 1반 1번 -> 10101"
+                placeholder="예: 10101"
                 maxLength={40}
                 className="min-h-[46px] w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
               />
@@ -535,7 +534,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
               )}
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-5">
               <label
                 htmlFor="author-name"
                 className="block text-sm font-semibold text-slate-900"
@@ -767,7 +766,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                     type="button"
                     disabled={isRequestingCamera || isProcessingPhoto}
                     onClick={() => void startCamera(facingMode)}
-                    className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-emerald-700 bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 whitespace-nowrap"
+                    className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-emerald-700 bg-emerald-700 px-4 py-2.5 text-center text-sm font-semibold leading-snug text-white transition-colors hover:bg-emerald-800 disabled:opacity-60"
                   >
                     <Camera className="h-4 w-4 shrink-0" aria-hidden="true" />
                     <span>
@@ -780,7 +779,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                     type="button"
                     disabled={isRequestingCamera || isProcessingPhoto}
                     onClick={() => uploadInputRef.current?.click()}
-                    className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:opacity-60 whitespace-nowrap"
+                    className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-center text-sm font-semibold leading-snug text-slate-800 transition-colors hover:bg-slate-100 disabled:opacity-60"
                   >
                     <Upload
                       className="h-4 w-4 shrink-0 text-slate-600"
@@ -956,7 +955,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                   key={hint}
                   type="button"
                   onClick={() => handleAppendSensorHint(hint)}
-                  className="min-h-[36px] rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 whitespace-nowrap"
+                  className="min-h-[36px] rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1 text-left text-xs font-medium leading-snug text-slate-700 hover:bg-slate-100"
                 >
                   + {hint}
                 </button>

@@ -29,12 +29,12 @@ export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
         role="status"
         className="flex flex-col gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950 sm:flex-row sm:items-center sm:justify-between"
       >
-        <div className="flex items-start gap-2.5">
+        <div className="flex min-w-0 items-start gap-2.5">
           <CheckCircle2
             className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700"
             aria-hidden="true"
           />
-          <div>
+          <div className="min-w-0 leading-relaxed">
             <span className="font-semibold">Cloudflare D1 연결됨</span>
             <span className="mx-1.5 text-emerald-700" aria-hidden="true">
               ·
@@ -86,12 +86,12 @@ export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
         role="status"
         className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50/80 px-4 py-3.5 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between"
       >
-        <div className="flex items-start gap-2.5">
+        <div className="flex min-w-0 items-start gap-2.5">
           <AlertCircle
             className="mt-0.5 h-4 w-4 shrink-0 text-amber-700"
             aria-hidden="true"
           />
-          <div className="space-y-0.5 leading-relaxed">
+          <div className="min-w-0 space-y-0.5 leading-relaxed">
             <p className="font-semibold">Cloudflare D1 저장소 확인 필요</p>
             <p className="text-xs sm:text-sm text-amber-900">{statusDetail}</p>
           </div>
@@ -120,12 +120,12 @@ export const StorageStatusNotice: React.FC<StorageStatusNoticeProps> = ({
       role="status"
       className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-3 text-sm text-slate-800 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div className="flex items-start gap-2.5">
+      <div className="flex min-w-0 items-start gap-2.5">
         <Info
           className="mt-0.5 h-4 w-4 shrink-0 text-slate-600"
           aria-hidden="true"
         />
-        <div className="space-y-0.5 leading-relaxed">
+        <div className="min-w-0 space-y-0.5 leading-relaxed">
           <p className="font-semibold text-slate-900">
             미리보기 모드 · 서버 저장은 Cloudflare 배포 후 연결됩니다
           </p>

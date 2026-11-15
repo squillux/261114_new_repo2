@@ -51,7 +51,7 @@ interface GroupTopicSelectionViewProps {
 }
 
 const INITIAL_TOPIC_FORM: GroupTopicInput = {
-  classRoom: '1학년 1반',
+  classRoom: '1반',
   groupName: '1모둠',
   groupMembers: '',
   selectedLocation: '',
@@ -78,8 +78,8 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
 }) => {
   const baselineFormRef = useRef<GroupTopicInput>(INITIAL_TOPIC_FORM);
   // 상단 구역: 모둠 인증코드 확인 상태
-  const [authClassPreset, setAuthClassPreset] = useState<string>('1학년 1반');
-  const [authClassRoom, setAuthClassRoom] = useState<string>('1학년 1반');
+  const [authClassPreset, setAuthClassPreset] = useState<string>('1반');
+  const [authClassRoom, setAuthClassRoom] = useState<string>('1반');
   const [authGroupPreset, setAuthGroupPreset] = useState<string>('1모둠');
   const [authGroupName, setAuthGroupName] = useState<string>('1모둠');
   const [authCodeInput, setAuthCodeInput] = useState<string>('');
@@ -100,7 +100,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
 
   // 하단 구역: 최종 모둠 프로젝트 주제 선정 일지 폼 상태
   const [form, setForm] = useState<GroupTopicInput>(INITIAL_TOPIC_FORM);
-  const [formClassPreset, setFormClassPreset] = useState<string>('1학년 1반');
+  const [formClassPreset, setFormClassPreset] = useState<string>('1반');
   const [formGroupPreset, setFormGroupPreset] = useState<string>('1모둠');
   const [adoptedSensorIdea, setAdoptedSensorIdea] = useState<string>('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -819,7 +819,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                       setAuthClassRoom(e.target.value);
                       setVerifyError('');
                     }}
-                    placeholder="예: 1학년 13반"
+                    placeholder="예: 13반"
                     aria-label="확인할 학급 직접 입력"
                     maxLength={20}
                     className="mt-1.5 min-h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
@@ -899,7 +899,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
               <button
                 type="submit"
                 disabled={isVerifying}
-                className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 whitespace-nowrap shrink-0"
+                className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-lg bg-emerald-700 px-5 py-2.5 text-center text-sm font-semibold leading-snug text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 shrink-0"
               >
                 <Unlock className="h-4 w-4" aria-hidden="true" />
                 <span>
@@ -1223,7 +1223,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                               }));
                             }
                           }}
-                          placeholder="예: 1학년 13반"
+                          placeholder="예: 13반"
                           aria-label="학급 직접 입력"
                           maxLength={20}
                           className="mt-1.5 min-h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
@@ -1367,7 +1367,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                         }
                       }}
                       placeholder={
-                        '사진에 대한 설명을 작성해주세요.\n예: 빈 교실, 2층 1학년 2반 교실'
+                        '사진에 대한 설명을 작성해주세요.\n예: 빈 교실, 2층 2반 교실'
                       }
                       maxLength={200}
                       className="min-h-[120px] w-full flex-1 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
@@ -1382,12 +1382,12 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                     )}
                   </div>
 
-                  <div className="flex flex-col justify-between gap-2.5 md:col-span-5">
+                  <div className="flex flex-col justify-between gap-2.5 md:col-span-5 min-w-0">
                     <button
                       type="button"
                       disabled={isRequestingCamera || isProcessingPhoto}
                       onClick={() => void startCamera(facingMode)}
-                      className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg border border-emerald-700 bg-emerald-700 px-3.5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 whitespace-nowrap"
+                      className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg border border-emerald-700 bg-emerald-700 px-3.5 py-2.5 text-center text-sm font-semibold leading-snug text-white transition-colors hover:bg-emerald-800 disabled:opacity-60"
                     >
                       <Camera className="h-4 w-4 shrink-0" aria-hidden="true" />
                       <span>
@@ -1403,7 +1403,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                         setIsLesson1PickerOpen((prev) => !prev)
                       }
                       aria-expanded={isLesson1PickerOpen}
-                      className={`inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg border px-3.5 py-2.5 text-sm font-semibold transition-colors whitespace-nowrap ${
+                      className={`inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg border px-3.5 py-2.5 text-center text-sm font-semibold leading-snug transition-colors ${
                         isLesson1PickerOpen
                           ? 'border-emerald-700 bg-emerald-50 text-emerald-900'
                           : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'
@@ -1426,9 +1426,9 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                       type="button"
                       disabled={isRequestingCamera || isProcessingPhoto}
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-60 whitespace-nowrap"
+                      className="inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-center text-xs font-medium leading-snug text-slate-700 hover:bg-slate-100 disabled:opacity-60"
                     >
-                      <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                      <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                       <span>
                         {isProcessingPhoto
                           ? '사진 불러오는 중...'

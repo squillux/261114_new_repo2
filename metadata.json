@@ -1,6 +1,10 @@
 {
   "name": "스마트 에코 스쿨 - 1차시 관찰 일지",
   "description": "중학교 1학년 정보·기술 융합 프로젝트 수업용 학교 공간 에너지 낭비 관찰 일지 웹 앱",
-  "requestFramePermissions": ["camera"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

@@ -138,8 +138,8 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
   } | null>(null);
 
   // 모둠 인증코드 관리 상태
-  const [codeClassPreset, setCodeClassPreset] = useState<string>('1학년 1반');
-  const [codeClassRoom, setCodeClassRoom] = useState<string>('1학년 1반');
+  const [codeClassPreset, setCodeClassPreset] = useState<string>('1반');
+  const [codeClassRoom, setCodeClassRoom] = useState<string>('1반');
   const [codeGroupPreset, setCodeGroupPreset] = useState<string>('1모둠');
   const [codeGroupName, setCodeGroupName] = useState<string>('1모둠');
   const [codeValue, setCodeValue] = useState<string>('');
@@ -1665,7 +1665,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                       setCodeClassRoom(e.target.value);
                       setCodeFormError('');
                     }}
-                    placeholder="예: 1학년 13반"
+                    placeholder="예: 13반"
                     aria-label="인증코드를 만들 학급 직접 입력"
                     maxLength={20}
                     className="mt-1.5 min-h-[42px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
