@@ -163,14 +163,14 @@ export const Lesson5BirdseyePromptView: React.FC<Lesson5Props> = ({
     <div className="space-y-6">
       <div className="space-y-2">
         <p className="text-xs font-medium text-slate-500">
-          중학교 1학년 정보(기술 융합) · 4단계(5차시) · AI 이미지 생성기를 활용한 가상
+          중학교 1학년 정보(기술 융합) · 5단계(7차시) · AI 이미지 생성기를 활용한 가상
           조감도 제작
         </p>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
           가상 조감도 프롬프트 만들기
         </h1>
         <p className="max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
-          우리 모둠 기기가 학교에 실제로 설치된다면 어떤 모습일까요? 2차시에 고른 우리
+          우리 모둠 기기가 학교에 실제로 설치된다면 어떤 모습일까요? 3~4차시에 고른 우리
           모둠 사진을 바탕으로, AI에게 정확하게 부탁하는 문장(프롬프트)을 함께 만들어
           선생님께 제출해요.
         </p>
@@ -186,13 +186,13 @@ export const Lesson5BirdseyePromptView: React.FC<Lesson5Props> = ({
 
       <LessonFlowSection
         id="lesson5-flow-title"
-        title="5차시 진행 순서"
+        title="7차시 진행 순서"
         steps={[
           {
             icon: KeyRound,
-            title: '모둠 인증 · 2차시 주제 불러오기',
+            title: '모둠 인증 · 3~4차시 주제 불러오기',
             description:
-              '모둠 인증코드를 입력하면 2차시에 확정한 주제와 대표 사진이 자동으로 들어와요.',
+              '모둠 인증코드를 입력하면 3~4차시에 확정한 주제와 대표 사진이 자동으로 들어와요.',
           },
           {
             icon: PenLine,
@@ -205,7 +205,7 @@ export const Lesson5BirdseyePromptView: React.FC<Lesson5Props> = ({
             icon: Sparkles,
             title: 'A · AI가 돕기: 선생님이 생성',
             description:
-              '제출한 프롬프트로 선생님이 조감도를 만들어 올려요. 6차시에 확인하고 판단해요.',
+              '제출한 프롬프트로 선생님이 조감도를 만들어 올려요. 8차시에 확인하고 판단해요.',
           },
         ]}
       />
@@ -214,7 +214,7 @@ export const Lesson5BirdseyePromptView: React.FC<Lesson5Props> = ({
         stepLabel="1단계 · 모둠 인증"
         title="우리 모둠 주제와 대표 사진 불러오기"
         submitLabel="모둠 인증하고 시작하기"
-        helpText="2차시와 같은 모둠 인증코드를 입력하세요. 우리 모둠이 확정한 주제와 대표 사진만 불러와요."
+        helpText="3~4차시와 같은 모둠 인증코드를 입력하세요. 우리 모둠이 확정한 주제와 대표 사진만 불러와요."
         verified={cred}
         verifiedSummary={
           submittedAt ? `프롬프트 제출함 · ${formatDateTime(submittedAt)}` : '아직 제출 전'
@@ -321,19 +321,19 @@ export const Lesson5BirdseyePromptView: React.FC<Lesson5Props> = ({
                 위에서 모둠 인증을 먼저 해 주세요
               </p>
               <p className="text-xs text-slate-500">
-                인증하면 2차시 주제가 자동으로 채워져요.
+                인증하면 3~4차시 주제가 자동으로 채워져요.
               </p>
             </div>
           ) : (
             <div className="mt-5 space-y-5">
-              {/* 2차시 주제·대표 사진 */}
+              {/* 3~4차시 주제·대표 사진 */}
               <div className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:grid-cols-5">
                 <div className="sm:col-span-2">
                   {referencePhoto ? (
                     <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-white">
                       <img
                         src={referencePhoto}
-                        alt="2차시 모둠 대표 사진"
+                        alt="3~4차시 모둠 대표 사진"
                         referrerPolicy="no-referrer"
                         className="h-40 w-full object-cover"
                       />
@@ -349,14 +349,14 @@ export const Lesson5BirdseyePromptView: React.FC<Lesson5Props> = ({
                   ) : (
                     <div className="flex h-40 flex-col items-center justify-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-center text-xs text-amber-900">
                       <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-                      <span className="font-semibold">2차시 대표 사진이 없어요</span>
+                      <span className="font-semibold">3~4차시 대표 사진이 없어요</span>
                       <span>선생님께 알려 주세요.</span>
                     </div>
                   )}
                 </div>
                 <div className="space-y-2 text-sm sm:col-span-3">
                   <p className="text-xs font-semibold text-slate-500">
-                    AI가 바꿀 원본 사진 · 2차시 확정 주제
+                    AI가 바꿀 원본 사진 · 3~4차시 확정 주제
                   </p>
                   {topic ? (
                     <>
@@ -376,7 +376,7 @@ export const Lesson5BirdseyePromptView: React.FC<Lesson5Props> = ({
                     </>
                   ) : (
                     <p className="text-xs leading-relaxed text-amber-900">
-                      아직 2차시 모둠 주제가 제출되지 않았어요. 아래 칸을 직접 채워도
+                      아직 3~4차시 모둠 주제가 제출되지 않았어요. 아래 칸을 직접 채워도
                       괜찮아요.
                     </p>
                   )}
@@ -507,7 +507,7 @@ export const Lesson5BirdseyePromptView: React.FC<Lesson5Props> = ({
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" />
                     <p className="leading-relaxed">
                       <span className="font-semibold">선생님께 제출했어요!</span> 다음
-                      시간(6차시)까지 선생님이 조감도를 만들어 올려 줄 거예요.
+                      시간(8차시)까지 선생님이 조감도를 만들어 올려 줄 거예요.
                     </p>
                   </div>
                   <button
@@ -515,7 +515,7 @@ export const Lesson5BirdseyePromptView: React.FC<Lesson5Props> = ({
                     onClick={onGoToLesson6}
                     className="inline-flex min-h-[40px] items-center justify-center gap-1.5 self-start rounded-lg border border-emerald-700/40 bg-white px-3.5 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 whitespace-nowrap sm:self-auto"
                   >
-                    <span>6차시 화면 미리 보기</span>
+                    <span>8차시 화면 미리 보기</span>
                     <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
                 </div>
@@ -553,7 +553,7 @@ export const Lesson5BirdseyePromptView: React.FC<Lesson5Props> = ({
       {enlarged && referencePhoto && (
         <ImageModal
           src={referencePhoto}
-          title={`${cred?.classRoom} · ${cred?.groupName} · 2차시 대표 사진`}
+          title={`${cred?.classRoom} · ${cred?.groupName} · 3~4차시 대표 사진`}
           onClose={() => setEnlarged(false)}
         />
       )}

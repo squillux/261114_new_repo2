@@ -84,7 +84,7 @@ export const LessonFlowSection: React.FC<{
   );
 };
 
-/* ---------- 모둠 인증 카드 (2차시와 같은 방식) ---------- */
+/* ---------- 모둠 인증 카드 (3~4차시와 같은 방식) ---------- */
 
 interface GroupAuthCardProps {
   stepLabel: string;

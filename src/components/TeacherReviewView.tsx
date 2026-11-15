@@ -29,6 +29,7 @@ import {
   type StorageConnectionStatus,
 } from '../types/observation';
 import {
+  fetchGroupFlowchartFromApi,
   saveBulkGroupCodes,
   saveGroupCode,
   type ApiSaveBulkCodesResult,
@@ -111,6 +112,21 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
   onGoToLesson2,
 }) => {
   const [stageTab, setStageTab] = useState<TeacherStageTab>(initialTab);
+  const [loadingFlowchartId, setLoadingFlowchartId] = useState<string | null>(
+    null
+  );
+
+  const handleOpenFlowchart = async (topic: GroupTopicRecord) => {
+    const title = `${topic.classRoom} · ${topic.groupName} · 순서도 활동지`;
+    if (topic.flowchartDataUrl) {
+      setEnlargedPhoto({ src: topic.flowchartDataUrl, title });
+      return;
+    }
+    setLoadingFlowchartId(topic.id);
+    const res = await fetchGroupFlowchartFromApi(topic.classRoom, topic.groupName);
+    setLoadingFlowchartId(null);
+    if (res.ok && res.dataUrl) setEnlargedPhoto({ src: res.dataUrl, title });
+  };
   const [teacherPassword, setTeacherPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -626,7 +642,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-medium text-slate-500">
-            교사 확인 화면 · 1차시 결과, 2차시 주제, 모둠 인증코드 관리
+            교사 확인 화면 · 2차시 결과, 3~4차시 주제, 모둠 인증코드 관리
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
             수업 활동 결과 모아보기
@@ -824,7 +840,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
       {/* 요약 지표 */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <p className="text-xs font-medium text-slate-500">1차시 개인 기록</p>
+          <p className="text-xs font-medium text-slate-500">2차시 개인 기록</p>
           <p className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">
             {stats.observations}건
           </p>
@@ -864,7 +880,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              1차시 · 개인 관찰 결과 ({stats.observations})
+              2차시 · 개인 관찰 결과 ({stats.observations})
             </button>
             <button
               type="button"
@@ -875,7 +891,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              2차시 · 모둠별 주제 선정 ({topics.length})
+              3~4차시 · 모둠별 주제 선정 ({topics.length})
             </button>
             <button
               type="button"
@@ -887,7 +903,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
               }`}
             >
               <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>5·6차시 · 가상 조감도</span>
+              <span>7·8차시 · 가상 조감도</span>
             </button>
             <button
               type="button"
@@ -956,7 +972,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
           )}
         </div>
 
-        {/* 학급/모둠/공간/검색 필터 (1·2차시 결과 조회 탭일 때 표시) */}
+        {/* 학급/모둠/공간/검색 필터 (2·3~4차시 결과 조회 탭일 때 표시) */}
         {(stageTab === 'lesson1' || stageTab === 'lesson2') && (
           <div className="flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
@@ -1055,7 +1071,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
         )}
       </div>
 
-      {/* 탭 1: 1차시 개인/모둠 관찰 결과 */}
+      {/* 탭 1: 2차시 개인/모둠 관찰 결과 */}
       {stageTab === 'lesson1' && photosDeferred && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs leading-relaxed text-emerald-950">
           전체 학급 응답({stats.observations}건)이 많아 속도를 위해 텍스트
@@ -1076,7 +1092,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
             />
             <h2 className="mt-3 text-base font-semibold text-slate-900">
               {observations.length === 0
-                ? '아직 제출된 1차시 개인 관찰 일지가 없습니다'
+                ? '아직 제출된 2차시 개인 관찰 일지가 없습니다'
                 : '조건에 맞는 관찰 일지가 없습니다'}
             </h2>
             <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-slate-600">
@@ -1090,7 +1106,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                 onClick={onGoToLesson1}
                 className="mt-5 inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
               >
-                1차시 개인 관찰 일지 화면으로 이동
+                2차시 개인 관찰 일지 화면으로 이동
               </button>
             )}
           </div>
@@ -1178,7 +1194,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                         onClick={onGoToLesson2}
                         className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                       >
-                        2차시 주제 선정으로 이동
+                        3~4차시 주제 선정으로 이동
                       </button>
                     </div>
                   </div>
@@ -1456,7 +1472,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
           </div>
         ))}
 
-      {/* 탭 2: 2차시 모둠별 주제 선정 결과 */}
+      {/* 탭 2: 3~4차시 모둠별 주제 선정 결과 */}
       {stageTab === 'lesson2' &&
         (filteredTopics.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white px-6 py-12 text-center">
@@ -1466,11 +1482,11 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
             />
             <h2 className="mt-3 text-base font-semibold text-slate-900">
               {topics.length === 0
-                ? '아직 제출된 2차시 모둠별 프로젝트 주제가 없습니다'
+                ? '아직 제출된 3~4차시 모둠별 프로젝트 주제가 없습니다'
                 : '조건에 맞는 모둠 주제가 없습니다'}
             </h2>
             <p className="mx-auto mt-1.5 max-w-md text-sm leading-relaxed text-slate-600">
-              2차시 「모둠별 프로젝트 주제 선정」 페이지에서 모둠 인증 후 최종
+              3~4차시 「모둠별 프로젝트 주제 선정」 페이지에서 모둠 인증 후 최종
               주제와 핵심 질문을 작성하면 이곳에 모여 보입니다.
             </p>
             {topics.length === 0 && (
@@ -1479,7 +1495,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                 onClick={onGoToLesson2}
                 className="mt-5 inline-flex min-h-[44px] items-center justify-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
               >
-                2차시 모둠별 주제 선정 화면으로 이동
+                3~4차시 모둠별 주제 선정 화면으로 이동
               </button>
             )}
           </div>
@@ -1615,6 +1631,29 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                         </div>
                       )}
                     </div>
+
+                    <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                      <span className="text-xs font-semibold text-slate-500">
+                        순서도 활동지
+                      </span>
+                      {topic.hasFlowchart || topic.flowchartDataUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleOpenFlowchart(topic)}
+                          disabled={loadingFlowchartId === topic.id}
+                          className="inline-flex min-h-[34px] items-center gap-1 rounded-md border border-emerald-700/40 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-60"
+                        >
+                          <ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>
+                            {loadingFlowchartId === topic.id
+                              ? '불러오는 중...'
+                              : '순서도 사진 보기'}
+                          </span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400">아직 올리지 않음</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </article>
@@ -1645,7 +1684,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
           >
             <div className="border-b border-slate-100 pb-4">
               <p className="text-xs font-semibold text-emerald-800">
-                2차시 모둠 활동 준비
+                3~4차시 모둠 활동 준비
               </p>
               <h2
                 id="code-creator-title"
@@ -1655,7 +1694,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
               </h2>
               <p className="mt-1 text-sm text-slate-600">
                 교사가 직접 학급과 모둠을 지정해 인증코드를 만들면, 학생들이
-                2차시 페이지에서 자기 반·자기 모둠의 1차시 관찰 일지와 사진을
+                3~4차시 페이지에서 자기 반·자기 모둠의 2차시 관찰 일지와 사진을
                 열어볼 수 있습니다.
               </p>
             </div>
@@ -1895,8 +1934,8 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   등록된 모둠별 인증코드 목록
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  학생이 2차시 페이지에서 아래 학급·모둠과 인증코드를 입력하면
-                  1차시 기록을 볼 수 있습니다.
+                  학생이 3~4차시 페이지에서 아래 학급·모둠과 인증코드를 입력하면
+                  2차시 기록을 볼 수 있습니다.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
@@ -1933,7 +1972,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                   onClick={onGoToLesson2}
                   className="min-h-[38px] rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0"
                 >
-                  2차시 화면에서 테스트
+                  3~4차시 화면에서 테스트
                 </button>
               </div>
             </div>
@@ -1994,7 +2033,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
                           </span>
                         </div>
                         <div className="flex flex-wrap items-center gap-x-2 text-xs text-slate-500 tabular-nums">
-                          <span>1차시 기록 {obsCount}건</span>
+                          <span>2차시 기록 {obsCount}건</span>
                           <span aria-hidden="true">·</span>
                           <span>
                             {entry.syncState === 'saved-to-api'

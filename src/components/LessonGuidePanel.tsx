@@ -11,18 +11,18 @@ export const Lesson1PageHeader: React.FC = () => {
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium text-slate-500">
-        중학교 1학년 정보(기술 융합) · 1단계(1차시) · 읽걷쓰AI 프로젝트
+        중학교 1학년 정보(기술 융합) · 2단계(2차시) · 읽걷쓰AI 프로젝트
       </p>
       <h1
         id="lesson-guide-title"
         className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl"
       >
-        학교 공간 에너지 낭비 관찰 일지
+        에너지 낭비 문제 발견 · 개인 관찰 일지
       </h1>
       <p className="max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
-        먼저 개인별로 학교를 걸어 다니며 에너지가 낭비되는 공간의 사진과 관찰
-        내용을 기록합니다. 개인 작성이 모두 끝나면 선생님이 모둠별로 결과를 모아
-        보여줍니다.
+        1차시 걷기 활동에서 찍은 사진과 관찰 내용을 바탕으로, 내가 발견한 에너지
+        낭비 문제를 개인 관찰 일지로 정리합니다. 개인 작성이 모두 끝나면 선생님이
+        모둠별로 결과를 모아 보여줍니다.
       </p>
     </div>
   );
@@ -41,7 +41,7 @@ export const Lesson1FlowSection: React.FC = () => {
           id="lesson1-flow-title"
           className="text-base font-semibold text-slate-900"
         >
-          1차시 진행 순서
+          2차시 진행 순서
         </h2>
         <button
           type="button"
@@ -73,11 +73,11 @@ export const Lesson1FlowSection: React.FC = () => {
                 className="h-4 w-4 shrink-0 text-slate-500"
                 aria-hidden="true"
               />
-              <span>들어가기 · 스마트 시티 및 IoT 사례 살펴보기</span>
+              <span>들어가기 · 1차시 관찰 떠올리기</span>
             </div>
             <p className="leading-relaxed text-slate-600">
-              수업 중 선생님이 안내하는 스마트 시티·IoT 센서 적용 사례 영상과
-              기사를 보며 자동화 아이디어를 떠올립니다.
+              1차시에 학교를 걸으며 찍은 사진과 메모를 다시 보고, 가장 문제라고
+              느낀 에너지 낭비 장면을 고릅니다.
             </p>
           </div>
         </li>
@@ -92,12 +92,12 @@ export const Lesson1FlowSection: React.FC = () => {
                 className="h-4 w-4 shrink-0 text-emerald-700"
                 aria-hidden="true"
               />
-              <span>걷기 활동 · 개인별 현장 사진 촬영 및 관찰 일지 작성</span>
+              <span>개인 관찰 일지 · 문제 상황 정의하기</span>
             </div>
             <p className="leading-relaxed text-slate-600">
-              복도, 빈 교실, 화장실 등을 살펴보며 에너지가 낭비되는 현장을
-              사진으로 찍고 관찰 일지에 기록합니다. 찍은 사진은 이후 프로그램으로
-              해결한 모습을 구현할 때 그대로 활용합니다.
+              현장 사진을 올리고 낭비 장면, 원인과 불편한 점, 센서 아이디어를 적어
+              내가 발견한 문제를 구체적으로 정의합니다. 사진은 이후 가상 조감도를
+              만들 때 그대로 활용합니다.
             </p>
           </div>
         </li>
@@ -112,11 +112,11 @@ export const Lesson1FlowSection: React.FC = () => {
                 className="h-4 w-4 shrink-0 text-slate-500"
                 aria-hidden="true"
               />
-              <span>모둠 확인 · 개인 기록 모아보고 2차시 주제 준비하기</span>
+              <span>모둠 확인 · 개인 기록 모아보고 3~4차시 주제 준비하기</span>
             </div>
             <p className="leading-relaxed text-slate-600">
               개인 작성이 끝나면 선생님이 모둠별로 관찰 결과와 사진을 함께
-              보여주며, 2차시 「모둠별 프로젝트 주제 선정」으로 이어집니다.
+              보여주며, 3~4차시 「모둠별 프로젝트 주제 선정」으로 이어집니다.
             </p>
           </div>
         </li>

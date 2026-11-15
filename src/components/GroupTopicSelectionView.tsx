@@ -62,6 +62,7 @@ const INITIAL_TOPIC_FORM: GroupTopicInput = {
   controlConditionWhen: '',
   controlConditionThen: '',
   controlConditionDraft: '',
+  flowchartDataUrl: '',
 };
 
 export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = ({
@@ -120,6 +121,9 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
   const [isFlowMobileExpanded, setIsFlowMobileExpanded] = useState(false);
   const [existingTopicNotice, setExistingTopicNotice] = useState('');
 
+  const [isProcessingFlowchart, setIsProcessingFlowchart] = useState(false);
+  const [flowchartError, setFlowchartError] = useState('');
+  const flowchartInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const nativeCaptureInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -154,7 +158,8 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
       form.selectionReason !== base.selectionReason ||
       form.controlConditionWhen !== base.controlConditionWhen ||
       form.controlConditionThen !== base.controlConditionThen ||
-      form.controlConditionDraft !== base.controlConditionDraft;
+      form.controlConditionDraft !== base.controlConditionDraft ||
+      (form.flowchartDataUrl || '') !== (base.flowchartDataUrl || '');
     onDirtyChange?.(isDirty);
   }, [form, onDirtyChange]);
 
@@ -387,6 +392,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
           controlConditionWhen: existing.controlConditionWhen || '',
           controlConditionThen: existing.controlConditionThen || '',
           controlConditionDraft: existing.controlConditionDraft || '',
+          flowchartDataUrl: existing.flowchartDataUrl || '',
         };
         baselineFormRef.current = loaded;
         setForm(loaded);
@@ -509,6 +515,27 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
     }
   };
 
+  const handleFlowchartUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFlowchartError('');
+    setIsProcessingFlowchart(true);
+    try {
+      // 손글씨 순서도가 읽히도록 조금 더 크게 압축
+      const compressed = await compressImageFile(file, 1600, 0.85);
+      setForm((prev) => ({ ...prev, flowchartDataUrl: compressed.dataUrl }));
+    } catch (err) {
+      setFlowchartError(
+        err instanceof Error ? err.message : '순서도 사진을 처리하지 못했습니다.'
+      );
+    } finally {
+      setIsProcessingFlowchart(false);
+      if (flowchartInputRef.current) flowchartInputRef.current.value = '';
+    }
+  };
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -600,6 +627,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
         controlConditionWhen: whenText,
         controlConditionThen: thenText,
         controlConditionDraft: combinedDraft,
+        flowchartDataUrl: form.flowchartDataUrl || '',
       };
 
       const result = await submitGroupTopic(cleaned);
@@ -647,14 +675,14 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
     <div className="space-y-6">
       <div className="space-y-2">
         <p className="text-xs font-medium text-slate-500">
-          중학교 1학년 정보(기술 융합) · 2단계(2차시) · 핵심 질문 도출 및
+          중학교 1학년 정보(기술 융합) · 3단계(3~4차시) · 핵심 질문 도출 및
           알고리즘 설계
         </p>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-          모둠별 프로젝트 주제 선정
+          모둠별 프로젝트 주제 선정 · 순서도 설계
         </h1>
         <p className="max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
-          먼저 교사에게 받은 모둠별 인증코드를 입력해 1차시에서 모둠원들이
+          먼저 교사에게 받은 모둠별 인증코드를 입력해 2차시에서 모둠원들이
           제출한 사진과 관찰 일지를 함께 확인한 뒤, 아래에서 우리 모둠의 최종
           프로젝트 주제 한 가지를 선정해 기록하세요.
         </p>
@@ -668,7 +696,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
         context="student"
       />
 
-      {/* 2차시 활동 흐름 */}
+      {/* 3~4차시 활동 흐름 */}
       <section
         aria-labelledby="lesson2-flow-title"
         className="rounded-xl border border-slate-200 bg-white p-5 space-y-4"
@@ -678,7 +706,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
             id="lesson2-flow-title"
             className="text-base font-semibold text-slate-900"
           >
-            2차시 진행 순서
+            3~4차시 진행 순서
           </h2>
           <button
             type="button"
@@ -710,10 +738,10 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                   className="h-4 w-4 shrink-0 text-slate-500"
                   aria-hidden="true"
                 />
-                <span>모둠 인증 · 1차시 관찰 일지와 사진 불러오기</span>
+                <span>모둠 인증 · 2차시 관찰 일지와 사진 불러오기</span>
               </div>
               <p className="leading-relaxed text-slate-600">
-                선생님께 안내받은 학급·모둠 인증코드를 입력해 모둠원들이 1차시에
+                선생님께 안내받은 학급·모둠 인증코드를 입력해 모둠원들이 2차시에
                 기록한 현장 사진과 관찰 일지를 한자리에 모읍니다.
               </p>
             </div>
@@ -732,7 +760,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 <span>모둠 토의 · 해결할 학교 공간과 핵심 질문 정하기</span>
               </div>
               <p className="leading-relaxed text-slate-600">
-                1차시 기록을 비교해 단순한 절약 구호가 아닌 센서와 코딩으로
+                2차시 기록을 비교해 단순한 절약 구호가 아닌 센서와 코딩으로
                 자동 해결할 문제 1가지를 고르고 핵심 질문에 합의합니다.
               </p>
             </div>
@@ -748,18 +776,18 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                   className="h-4 w-4 shrink-0 text-slate-500"
                   aria-hidden="true"
                 />
-                <span>주제 확정 · 자연어 제어 조건 작성 및 대표 제출</span>
+                <span>주제 확정 · 제어 조건과 순서도 설계 후 대표 제출</span>
               </div>
               <p className="leading-relaxed text-slate-600">
-                「만약 ~(센서 입력) → ~(작동 출력)」 제어 조건 초안을 세우고
-                모둠 대표 1명이 제출해 다음 차시 피지컬 컴퓨팅 설계로 이어집니다.
+                「만약 ~(센서 입력) → ~(작동 출력)」 제어 조건을 세우고, 종이
+                활동지에 그린 순서도 사진과 함께 모둠 대표 1명이 제출합니다.
               </p>
             </div>
           </li>
         </ol>
       </section>
 
-      {/* 상단 구역: 모둠 인증코드 입력 및 1차시 개인별 일지 확인 */}
+      {/* 상단 구역: 모둠 인증코드 입력 및 2차시 개인별 일지 확인 */}
       <section
         aria-labelledby="group-verify-title"
         className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 space-y-5"
@@ -767,13 +795,13 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
         <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold text-emerald-800">
-              1단계 · 모둠 인증 후 1차시 개인 일지 확인
+              1단계 · 모둠 인증 후 2차시 개인 일지 확인
             </p>
             <h2
               id="group-verify-title"
               className="mt-1 text-lg font-bold text-slate-900 sm:text-xl"
             >
-              우리 모둠 1차시 관찰 기록·사진 불러오기
+              우리 모둠 2차시 관찰 기록·사진 불러오기
             </h2>
           </div>
 
@@ -905,7 +933,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 <span>
                   {isVerifying
                     ? '확인 중...'
-                    : '모둠 인증하고 1차시 기록 보기'}
+                    : '모둠 인증하고 2차시 기록 보기'}
                 </span>
               </button>
             </div>
@@ -920,7 +948,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
             )}
 
             <p className="text-xs leading-relaxed text-slate-500">
-              선생님께 안내받은 우리 반·우리 모둠 인증코드를 입력하면, 1차시에
+              선생님께 안내받은 우리 반·우리 모둠 인증코드를 입력하면, 2차시에
               모둠원들이 제출한 개인 관찰 일지와 현장 사진을 이 구역에서 바로
               모아볼 수 있습니다.
             </p>
@@ -938,7 +966,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 </span>
                 <span aria-hidden="true">·</span>
                 <span className="tabular-nums">
-                  1차시 개인 관찰 일지 {verifiedObservations.length}건
+                  2차시 개인 관찰 일지 {verifiedObservations.length}건
                 </span>
               </div>
               {verifyNotice && (
@@ -949,11 +977,11 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
             {verifiedObservations.length === 0 ? (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-600">
                 <p className="font-semibold text-slate-900">
-                  {unlockedTarget.classRoom} {unlockedTarget.groupName}의 1차시
+                  {unlockedTarget.classRoom} {unlockedTarget.groupName}의 2차시
                   개인 관찰 일지가 아직 없습니다
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                  1차시 화면에서 학급 「{unlockedTarget.classRoom}」, 소속 모둠
+                  2차시 화면에서 학급 「{unlockedTarget.classRoom}」, 소속 모둠
                   「{unlockedTarget.groupName}」으로 개인 기록을 작성하면 이곳에
                   모여 보입니다. 아래에서 직접 공간과 주제를 입력할 수도 있습니다.
                 </p>
@@ -1062,12 +1090,12 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 className="h-4 w-4 text-emerald-700"
                 aria-hidden="true"
               />
-              <span>2차시 모둠 협의 가이드</span>
+              <span>3~4차시 모둠 협의 가이드</span>
             </div>
             <ol className="space-y-2.5 text-sm leading-relaxed text-slate-600">
               <li>
                 <span className="font-semibold text-slate-900">
-                  1. 1차시 기록 비교:
+                  1. 2차시 기록 비교:
                 </span>{' '}
                 위에서 불러온 모둠원들의 사진과 원인을 보며 가장 시급하거나
                 센서로 해결하기 좋은 문제를 고릅니다.
@@ -1413,7 +1441,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                         className="h-4 w-4 shrink-0 text-emerald-700"
                         aria-hidden="true"
                       />
-                      <span>1차시 기록에서 선택하기</span>
+                      <span>2차시 기록에서 선택하기</span>
                       <ChevronDown
                         className={`h-4 w-4 shrink-0 transition-transform ${
                           isLesson1PickerOpen ? 'rotate-180' : ''
@@ -1438,22 +1466,22 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                   </div>
                 </div>
 
-                {/* 1차시 기록에서 선택하기 드롭다운 */}
+                {/* 2차시 기록에서 선택하기 드롭다운 */}
                 {isLesson1PickerOpen && (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3.5 space-y-2">
                     {!unlockedTarget ? (
                       <p className="text-xs leading-relaxed text-slate-600">
                         먼저 위{' '}
                         <span className="font-semibold text-slate-900">
-                          「1단계 · 모둠 인증 후 1차시 개인 일지 확인」
+                          「1단계 · 모둠 인증 후 2차시 개인 일지 확인」
                         </span>
-                        에서 학급·모둠과 인증코드를 입력해 1차시 기록을 불러와
+                        에서 학급·모둠과 인증코드를 입력해 2차시 기록을 불러와
                         주세요.
                       </p>
                     ) : verifiedObservationsWithPhotos.length === 0 ? (
                       <p className="text-xs leading-relaxed text-slate-600">
                         불러온 {unlockedTarget.classRoom}{' '}
-                        {unlockedTarget.groupName}의 1차시 기록 중 첨부된
+                        {unlockedTarget.groupName}의 2차시 기록 중 첨부된
                         사진이 없습니다. 오른쪽{' '}
                         <span className="font-semibold text-slate-900">
                           [현장 사진 직접 올리기]
@@ -1479,7 +1507,7 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                           className="min-h-[44px] w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-700/20"
                         >
                           <option value="">
-                            -- 1차시 모둠 사진 중 하나를 선택하세요 --
+                            -- 2차시 모둠 사진 중 하나를 선택하세요 --
                           </option>
                           {verifiedObservationsWithPhotos.map((obs) => {
                             const locText = obs.locationDetail
@@ -1706,11 +1734,11 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                   </p>
                   <p className="text-xs text-slate-600">
                     센서가 감지하는 「조건」과 장치가 움직이는 「동작」을 나누어
-                    작성하면 다음 차시 코딩 설계로 바로 이어집니다.
+                    작성하면 순서도 설계로 바로 이어집니다.
                   </p>
                   {adoptedSensorIdea && (
                     <p className="pt-1 text-xs font-medium text-emerald-800">
-                      가져온 1차시 센서 아이디어 참고: {adoptedSensorIdea}
+                      가져온 2차시 센서 아이디어 참고: {adoptedSensorIdea}
                     </p>
                   )}
                 </div>
@@ -1764,9 +1792,93 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                 </div>
               </div>
 
+              {/* 7. 순서도 설계 활동지 사진 */}
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-slate-900">
+                    7. 순서도 설계 활동지 사진{' '}
+                    <span className="text-xs font-normal text-slate-500">
+                      선택
+                    </span>
+                  </p>
+                  <p className="text-xs leading-relaxed text-slate-600">
+                    종이 활동지에 그린 우리 모둠 순서도를 사진으로 찍어 올려 주세요.
+                    글씨가 잘 보이도록 활동지 전체가 화면에 들어오게 찍어요.
+                  </p>
+                </div>
+
+                <input
+                  ref={flowchartInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => void handleFlowchartUpload(e)}
+                />
+
+                {form.flowchartDataUrl ? (
+                  <div className="space-y-2 rounded-lg border border-emerald-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
+                        <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                        순서도 사진 준비됨
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEnlargedPhoto({
+                              src: form.flowchartDataUrl || '',
+                              title: `${form.classRoom} · ${form.groupName} · 순서도`,
+                            })
+                          }
+                          className="inline-flex min-h-[36px] items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>크게</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => flowchartInputRef.current?.click()}
+                          className="inline-flex min-h-[36px] items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          <Camera className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>다시 올리기</span>
+                        </button>
+                      </div>
+                    </div>
+                    <img
+                      src={form.flowchartDataUrl}
+                      alt="모둠 순서도 활동지 사진"
+                      referrerPolicy="no-referrer"
+                      className="max-h-56 w-full rounded-md border border-slate-200 bg-white object-contain"
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => flowchartInputRef.current?.click()}
+                    disabled={isProcessingFlowchart}
+                    className="flex min-h-[56px] w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:border-emerald-600 hover:bg-emerald-50/40 disabled:opacity-60"
+                  >
+                    <Upload className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+                    <span>
+                      {isProcessingFlowchart
+                        ? '사진 처리 중...'
+                        : '순서도 사진 찍기 · 올리기'}
+                    </span>
+                  </button>
+                )}
+
+                {flowchartError && (
+                  <p role="alert" className="text-xs font-medium text-rose-700">
+                    {flowchartError}
+                  </p>
+                )}
+              </div>
+
               <button
                 type="submit"
-                disabled={isSubmitting || isProcessingPhoto}
+                disabled={isSubmitting || isProcessingPhoto || isProcessingFlowchart}
                 className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-base font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
               >
                 <Send className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -1818,8 +1930,8 @@ export const GroupTopicSelectionView: React.FC<GroupTopicSelectionViewProps> = (
                     </p>
                     {!submitFeedback.failed && (
                       <p className="text-xs opacity-85">
-                        모둠별 1가지 최종 주제로 정리되었으며, 다음 차시에
-                        선생님과 함께 피지컬 컴퓨팅 설계로 이어집니다.
+                        모둠별 1가지 최종 주제로 정리되었으며, 5~6차시
+                        피지컬 컴퓨팅 프로토타입 제작으로 이어집니다.
                       </p>
                     )}
                   </div>

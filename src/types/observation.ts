@@ -36,12 +36,15 @@ export interface GroupTopicInput {
   controlConditionWhen: string;
   controlConditionThen: string;
   controlConditionDraft: string;
+  /** 3~4차시 종이 순서도 활동지 사진 (제출 시에만 전송, 목록에는 포함하지 않음) */
+  flowchartDataUrl?: string;
 }
 
 export interface GroupTopicRecord extends GroupTopicInput {
   id: string;
   createdAt: string;
   syncState: SyncState;
+  hasFlowchart?: boolean;
 }
 
 export interface GroupAuthCode {

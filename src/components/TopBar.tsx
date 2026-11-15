@@ -17,10 +17,10 @@ interface TopBarProps {
 }
 
 const LESSON_NAV: { view: AppView; label: string; short: string }[] = [
-  { view: 'lesson1', label: '1차시 · 개인 관찰 일지', short: '1차시 관찰' },
-  { view: 'lesson2', label: '2차시 · 모둠별 프로젝트 주제 선정', short: '2차시 주제' },
-  { view: 'lesson5', label: '5차시 · 조감도 프롬프트', short: '5차시 프롬프트' },
-  { view: 'lesson6', label: '6차시 · 조감도 판단', short: '6차시 조감도' },
+  { view: 'lesson1', label: '2차시 · 개인 관찰 일지', short: '2차시 관찰' },
+  { view: 'lesson2', label: '3~4차시 · 모둠별 프로젝트 주제 선정', short: '3~4차시 주제' },
+  { view: 'lesson5', label: '7차시 · 조감도 프롬프트', short: '7차시 프롬프트' },
+  { view: 'lesson6', label: '8차시 · 조감도 판단', short: '8차시 조감도' },
 ];
 
 export const TopBar: React.FC<TopBarProps> = ({

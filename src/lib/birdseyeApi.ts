@@ -1,6 +1,6 @@
 import type { GroupTopicRecord } from '../types/observation';
 
-/** 5·6차시 가상 조감도 API (Cloudflare Worker /api/birdseye/*) */
+/** 7·8차시 가상 조감도 API (Cloudflare Worker /api/birdseye/*) */
 
 export interface BirdseyeVersion {
   version: number;

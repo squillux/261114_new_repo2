@@ -229,7 +229,7 @@ export const Lesson6BirdseyeReviewView: React.FC<Lesson6Props> = ({
     <div className="space-y-6">
       <div className="space-y-2">
         <p className="text-xs font-medium text-slate-500">
-          중학교 1학년 정보(기술 융합) · 5단계(6차시) · 가상 조감도 판단 및 시연·제안
+          중학교 1학년 정보(기술 융합) · 6단계(8차시) · 가상 조감도 판단 및 시연·제안
         </p>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
           가상 조감도 확인하고 판단하기
@@ -250,7 +250,7 @@ export const Lesson6BirdseyeReviewView: React.FC<Lesson6Props> = ({
 
       <LessonFlowSection
         id="lesson6-flow-title"
-        title="6차시 진행 순서"
+        title="8차시 진행 순서"
         steps={[
           {
             icon: KeyRound,
@@ -347,14 +347,14 @@ export const Lesson6BirdseyeReviewView: React.FC<Lesson6Props> = ({
             <div className="grid gap-4 md:grid-cols-2">
               <figure className="space-y-2">
                 <figcaption className="text-xs font-semibold text-slate-500">
-                  원래 사진 (2차시)
+                  원래 사진 (3~4차시)
                 </figcaption>
                 <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
                   {referencePhoto ? (
                     <>
                       <img
                         src={referencePhoto}
-                        alt="2차시 모둠 대표 사진"
+                        alt="3~4차시 모둠 대표 사진"
                         referrerPolicy="no-referrer"
                         className="aspect-[4/3] w-full object-contain"
                       />
@@ -374,7 +374,7 @@ export const Lesson6BirdseyeReviewView: React.FC<Lesson6Props> = ({
                     </>
                   ) : (
                     <div className="flex aspect-[4/3] items-center justify-center text-xs text-slate-500">
-                      2차시 대표 사진이 없어요
+                      3~4차시 대표 사진이 없어요
                     </div>
                   )}
                 </div>

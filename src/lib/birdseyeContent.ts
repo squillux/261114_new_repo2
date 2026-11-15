@@ -1,6 +1,6 @@
 import type { GroupTopicRecord } from '../types/observation';
 
-/** 5·6차시 가상 조감도 활동 내용 (프롬프트 빌더 · 평가표 · AI 윤리) */
+/** 7·8차시 가상 조감도 활동 내용 (프롬프트 빌더 · 평가표 · AI 윤리) */
 
 export interface PromptField {
   id: string;
@@ -120,7 +120,7 @@ export type PromptValues = Record<string, string>;
 const clip = (text: string, max = OWN_MAX_LENGTH) =>
   text.replace(/\s+/g, ' ').trim().slice(0, max);
 
-/** 2차시에 확정한 모둠 주제로 프롬프트 칸을 미리 채운다 */
+/** 3~4차시에 확정한 모둠 주제로 프롬프트 칸을 미리 채운다 */
 export function prefillFromTopic(topic: GroupTopicRecord | null): PromptValues {
   if (!topic) return {};
   const values: PromptValues = {};
@@ -177,7 +177,7 @@ export function hasInappropriateWord(text: string): boolean {
   return BAD_WORDS.some((w) => s.includes(w));
 }
 
-/** 6차시 평가표: 체크하지 못한 항목이 수정 요청 문장이 된다 */
+/** 8차시 평가표: 체크하지 못한 항목이 수정 요청 문장이 된다 */
 export const EVAL_ITEMS: {
   label: string;
   fix: string | ((v: PromptValues) => string);

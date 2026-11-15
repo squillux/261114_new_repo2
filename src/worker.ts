@@ -6,8 +6,18 @@ export interface Env {
 
 const SESSION_COOKIE_NAME = 'smart_eco_teacher_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 4;
-const MAX_JSON_BYTES = 1_200_000;
+const MAX_JSON_BYTES = 2_000_000;
 const MAX_PHOTO_DATA_URL_LENGTH = 750_000;
+
+/* 3~4차시 순서도 사진 (종이 활동지 촬영본) — 주제 표와 분리해 저장 */
+let flowchartSchemaReady = false;
+async function ensureFlowchartTable(env: Env): Promise<void> {
+  if (flowchartSchemaReady) return;
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS group_flowcharts (class_room TEXT NOT NULL, group_name TEXT NOT NULL, image_data_url TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (class_room, group_name))'
+  ).run();
+  flowchartSchemaReady = true;
+}
 
 interface ObservationRow {
   id: string;
@@ -1165,11 +1175,22 @@ async function handleApiRequest(
         .bind(classRoom.value, groupName.value)
         .first<GroupTopicRow>();
 
+      await ensureFlowchartTable(env);
+      const flowchartRow = await env.DB.prepare(
+        'SELECT image_data_url FROM group_flowcharts WHERE class_room = ? AND group_name = ?'
+      )
+        .bind(classRoom.value, groupName.value)
+        .first<{ image_data_url: string }>();
+
       return jsonResponse({
         verified: true,
         observations: (obsResult.results || []).map(mapObservationRow),
         existingTopic: existingTopicRow
-          ? mapGroupTopicRow(existingTopicRow)
+          ? {
+              ...mapGroupTopicRow(existingTopicRow),
+              flowchartDataUrl: flowchartRow?.image_data_url || '',
+              hasFlowchart: Boolean(flowchartRow?.image_data_url),
+            }
           : null,
       });
     } catch {
@@ -1200,9 +1221,20 @@ async function handleApiRequest(
         'SELECT id, class_room, group_name, group_members, selected_location, reference_photo_data_url, project_title, core_question, selection_reason, control_condition_when, control_condition_then, control_condition_draft, created_at FROM group_topics ORDER BY created_at DESC LIMIT 500'
       ).all<GroupTopicRow>();
 
+      await ensureFlowchartTable(env);
+      const flowchartKeys = await env.DB.prepare(
+        'SELECT class_room, group_name FROM group_flowcharts'
+      ).all<{ class_room: string; group_name: string }>();
+      const hasFlowchart = new Set(
+        (flowchartKeys.results || []).map((r) => `${r.class_room}::${r.group_name}`)
+      );
+
       return jsonResponse({
         ok: true,
-        topics: (result.results || []).map(mapGroupTopicRow),
+        topics: (result.results || []).map((row) => ({
+          ...mapGroupTopicRow(row),
+          hasFlowchart: hasFlowchart.has(`${row.class_room}::${row.group_name}`),
+        })),
       });
     } catch {
       return jsonResponse(
@@ -1322,10 +1354,27 @@ async function handleApiRequest(
       );
     }
 
+    const flowchartDataUrl = validatePhotoDataUrl(d.flowchartDataUrl);
+    if (!flowchartDataUrl.ok) {
+      return jsonResponse(
+        { ok: false, error: `순서도 사진: ${flowchartDataUrl.error}` },
+        400
+      );
+    }
+
     const id = crypto.randomUUID();
     const createdAt = new Date().toISOString();
 
     try {
+      if (flowchartDataUrl.value) {
+        await ensureFlowchartTable(env);
+        await env.DB.prepare(
+          'INSERT INTO group_flowcharts (class_room, group_name, image_data_url, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(class_room, group_name) DO UPDATE SET image_data_url = excluded.image_data_url, updated_at = excluded.updated_at'
+        )
+          .bind(classRoom.value, groupName.value, flowchartDataUrl.value, createdAt)
+          .run();
+      }
+
       await env.DB.prepare(
         'INSERT INTO group_topics (id, class_room, group_name, group_members, selected_location, reference_photo_data_url, project_title, core_question, selection_reason, control_condition_when, control_condition_then, control_condition_draft, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(class_room, group_name) DO UPDATE SET id = excluded.id, group_members = excluded.group_members, selected_location = excluded.selected_location, reference_photo_data_url = excluded.reference_photo_data_url, project_title = excluded.project_title, core_question = excluded.core_question, selection_reason = excluded.selection_reason, control_condition_when = excluded.control_condition_when, control_condition_then = excluded.control_condition_then, control_condition_draft = excluded.control_condition_draft, created_at = excluded.created_at'
       )
@@ -1376,13 +1425,57 @@ async function handleApiRequest(
     }
 
     try {
+      const target = await env.DB.prepare(
+        'SELECT class_room, group_name FROM group_topics WHERE id = ?'
+      )
+        .bind(id)
+        .first<{ class_room: string; group_name: string }>();
       await env.DB.prepare('DELETE FROM group_topics WHERE id = ?')
         .bind(id)
         .run();
+      if (target) {
+        await ensureFlowchartTable(env);
+        await env.DB.prepare(
+          'DELETE FROM group_flowcharts WHERE class_room = ? AND group_name = ?'
+        )
+          .bind(target.class_room, target.group_name)
+          .run();
+      }
       return jsonResponse({ ok: true, deletedId: id });
     } catch {
       return jsonResponse(
         { ok: false, error: '모둠 주제를 삭제하지 못했습니다.' },
+        500
+      );
+    }
+  }
+
+  if (method === 'GET' && path === '/api/group-flowchart') {
+    const authorized = await isTeacherAuthenticated(request, env);
+    if (!authorized) {
+      return jsonResponse(
+        { ok: false, error: '교사 로그인 후에만 순서도 사진을 볼 수 있습니다.' },
+        401
+      );
+    }
+    try {
+      await ensureFlowchartTable(env);
+      const row = await env.DB.prepare(
+        'SELECT image_data_url, updated_at FROM group_flowcharts WHERE class_room = ? AND group_name = ?'
+      )
+        .bind(
+          (url.searchParams.get('classRoom') || '').trim(),
+          (url.searchParams.get('groupName') || '').trim()
+        )
+        .first<{ image_data_url: string; updated_at: string }>();
+      return jsonResponse({
+        ok: true,
+        dataUrl: row?.image_data_url || '',
+        updatedAt: row?.updated_at || '',
+      });
+    } catch {
+      return jsonResponse(
+        { ok: false, error: '순서도 사진을 불러오지 못했습니다.' },
         500
       );
     }
@@ -1396,7 +1489,7 @@ async function handleApiRequest(
 }
 
 /* ------------------------------------------------------------------ */
-/* 5·6차시 가상 조감도 (프롬프트 제출 → 교사 업로드 → 학생 판단)            */
+/* 7·8차시 가상 조감도 (프롬프트 제출 → 교사 업로드 → 학생 판단)            */
 /* ------------------------------------------------------------------ */
 
 const BIRDSEYE_SCHEMA = [

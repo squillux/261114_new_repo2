@@ -687,6 +687,33 @@ export async function fetchGroupTopicsFromApi(): Promise<ApiFetchTopicsResult> {
   }
 }
 
+/** 교사 화면: 모둠 순서도 사진을 필요할 때만 불러오기 */
+export async function fetchGroupFlowchartFromApi(
+  classRoom: string,
+  groupName: string
+): Promise<{ ok: boolean; dataUrl: string; error?: string }> {
+  try {
+    const response = await fetch(
+      `/api/group-flowchart?classRoom=${encodeURIComponent(classRoom)}&groupName=${encodeURIComponent(groupName)}`,
+      { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+    );
+    if (!isJsonResponse(response)) {
+      return { ok: false, dataUrl: '', error: '서버에 연결되지 않았습니다.' };
+    }
+    const data = await response.json();
+    if (!response.ok || data?.ok === false) {
+      return {
+        ok: false,
+        dataUrl: '',
+        error: typeof data?.error === 'string' ? data.error : '순서도 사진을 불러오지 못했습니다.',
+      };
+    }
+    return { ok: true, dataUrl: typeof data?.dataUrl === 'string' ? data.dataUrl : '' };
+  } catch {
+    return { ok: false, dataUrl: '', error: '네트워크 연결을 확인해 주세요.' };
+  }
+}
+
 export async function submitGroupTopic(
   input: GroupTopicInput
 ): Promise<ApiSubmitTopicResult> {
@@ -707,8 +734,11 @@ export async function submitGroupTopic(
     if (isJsonResponse(response)) {
       const data = await response.json();
       if (response.ok && data?.ok !== false) {
+        // 순서도 원본은 서버에만 두고, 화면 상태에는 "올림 여부"만 남김
+        const { flowchartDataUrl, ...rest } = input;
         const serverRecord: GroupTopicRecord = {
-          ...input,
+          ...rest,
+          hasFlowchart: Boolean(flowchartDataUrl),
           id: data?.id ? String(data.id) : localId,
           createdAt: data?.createdAt ? String(data.createdAt) : nowIso,
           syncState: 'saved-to-api',
@@ -1156,6 +1186,6 @@ export async function verifyGroupAuthAndFetchObservations(
     status: 'not-connected',
     observations: matchedObs,
     existingTopic: matchedTopic,
-    message: `임시 미리보기 인증 완료 (${normalizedClass} ${normalizedGroup}) · 저장소 연결 전이므로 현재 브라우저에 입력된 1차시 기록만 표시됩니다.`,
+    message: `임시 미리보기 인증 완료 (${normalizedClass} ${normalizedGroup}) · 저장소 연결 전이므로 현재 브라우저에 입력된 2차시 기록만 표시됩니다.`,
   };
 }

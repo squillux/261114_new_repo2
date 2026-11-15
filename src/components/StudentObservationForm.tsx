@@ -1053,7 +1053,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                   <>
                     <p className="text-xs opacity-85">
                       개인 작성이 모두 끝나면 선생님이 모둠별로 결과를 모아
-                      보여주며 2차시 활동을 시작합니다.
+                      보여주며 3~4차시 활동을 시작합니다.
                     </p>
                     <div>
                       <button
@@ -1061,7 +1061,7 @@ export const StudentObservationForm: React.FC<StudentObservationFormProps> = ({
                         onClick={onGoToLesson2}
                         className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-current/20 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-50"
                       >
-                        <span>2차시 · 모둠별 프로젝트 주제 선정으로 이동</span>
+                        <span>3~4차시 · 모둠별 프로젝트 주제 선정으로 이동</span>
                         <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
                     </div>

@@ -151,15 +151,15 @@ export const TeacherBirdseyePanel: React.FC = () => {
         </div>
         <div className="grid gap-3 text-sm leading-relaxed text-slate-600 md:grid-cols-2">
           <div className="rounded-lg bg-slate-50 p-3.5">
-            <p className="font-semibold text-slate-900">5차시 → 6차시 사이</p>
+            <p className="font-semibold text-slate-900">7차시 → 8차시 사이</p>
             <p className="mt-1">
               ① 원본 사진 내려받기 → ② 프롬프트 복사 → ③ Gemini 등에 사진과 함께 붙여 넣어
-              생성 → ④ 결과를 「조감도 올리기」. 모둠마다 Gemini 대화창을 따로 열어 두면 6차시
+              생성 → ④ 결과를 「조감도 올리기」. 모둠마다 Gemini 대화창을 따로 열어 두면 8차시
               수정이 편해요.
             </p>
           </div>
           <div className="rounded-lg bg-slate-50 p-3.5">
-            <p className="font-semibold text-slate-900">6차시 수업 중</p>
+            <p className="font-semibold text-slate-900">8차시 수업 중</p>
             <p className="mt-1">
               「새 수정 요청」 모둠의 수정 요청을 복사해 같은 대화창에 붙여 넣고, 결과를 다시
               올리면 학생 화면에 10초 안에 최종본으로 바뀌어요.
@@ -237,7 +237,7 @@ export const TeacherBirdseyePanel: React.FC = () => {
         <div className="rounded-xl border border-slate-200 bg-white px-5 py-10 text-center text-sm text-slate-600">
           <p className="font-semibold text-slate-900">아직 표시할 모둠이 없어요</p>
           <p className="mt-1 text-xs text-slate-500">
-            모둠 인증코드를 만들거나 2차시 주제가 제출되면 여기에 모둠이 나타나요.
+            모둠 인증코드를 만들거나 3~4차시 주제가 제출되면 여기에 모둠이 나타나요.
           </p>
         </div>
       ) : (
@@ -369,7 +369,7 @@ const GroupCard: React.FC<{
             {g.classRoom} · {g.groupName}
           </p>
           <p className="mt-0.5 text-sm leading-relaxed text-slate-600">
-            {g.projectTitle || '2차시 주제 미제출'}
+            {g.projectTitle || '3~4차시 주제 미제출'}
           </p>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.tone}`}>
@@ -539,11 +539,11 @@ const GroupCard: React.FC<{
         </p>
       )}
 
-      {/* 5차시 프롬프트 */}
+      {/* 7차시 프롬프트 */}
       <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3.5 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold text-slate-700">
-            5차시 프롬프트
+            7차시 프롬프트
             {g.promptSubmittedAt && (
               <span className="ml-1.5 font-normal text-slate-500">
                 {formatDateTime(g.promptSubmittedAt)}
@@ -580,7 +580,7 @@ const GroupCard: React.FC<{
         )}
       </div>
 
-      {/* 6차시 수정 요청 */}
+      {/* 8차시 수정 요청 */}
       {review && (
         <div
           className={`rounded-lg border p-3.5 space-y-2 ${
@@ -589,7 +589,7 @@ const GroupCard: React.FC<{
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-semibold text-slate-700">
-              6차시 학생 판단
+              8차시 학생 판단
               <span className="ml-1.5 font-normal text-slate-500">
                 {review.basedOnVersion ? `${review.basedOnVersion}차 기준 · ` : ''}
                 {formatDateTime(g.reviewSavedAt)}

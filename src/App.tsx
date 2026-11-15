@@ -574,8 +574,8 @@ export default function App() {
         targetView,
         teacherTab,
         title: lesson1Dirty
-          ? '작성 중인 1차시 관찰 일지를 아직 제출하지 않았습니다'
-          : '아직 1차시 개인 관찰 일지를 제출하지 않았습니다',
+          ? '작성 중인 2차시 관찰 일지를 아직 제출하지 않았습니다'
+          : '아직 2차시 개인 관찰 일지를 제출하지 않았습니다',
         description: lesson1Dirty
           ? '제출하기 전에 다른 화면으로 이동하면 입력 중인 내용이 저장되지 않고 사라집니다. 그래도 이동할까요?'
           : '개인 관찰 일지를 제출한 뒤 다음 활동으로 넘어가는 것을 권장합니다. 제출 없이 다른 화면으로 이동할까요?',
@@ -591,8 +591,8 @@ export default function App() {
         targetView,
         teacherTab,
         title: lesson2Dirty
-          ? '작성 중인 2차시 모둠 주제를 아직 제출하지 않았습니다'
-          : '아직 2차시 모둠별 프로젝트 주제를 제출하지 않았습니다',
+          ? '작성 중인 3~4차시 모둠 주제를 아직 제출하지 않았습니다'
+          : '아직 3~4차시 모둠별 프로젝트 주제를 제출하지 않았습니다',
         description: lesson2Dirty
           ? '제출하기 전에 다른 화면으로 이동하면 입력 중인 내용이 저장되지 않고 사라집니다. 그래도 이동할까요?'
           : '모둠별 최종 프로젝트 주제를 제출한 뒤 이동하는 것을 권장합니다. 제출 없이 다른 화면으로 이동할까요?',
@@ -609,8 +609,8 @@ export default function App() {
         targetView,
         teacherTab,
         title: isLesson5
-          ? '수정한 5차시 프롬프트를 아직 제출하지 않았습니다'
-          : '6차시 평가·성찰 내용을 아직 보내지 않았습니다',
+          ? '수정한 7차시 프롬프트를 아직 제출하지 않았습니다'
+          : '8차시 평가·성찰 내용을 아직 보내지 않았습니다',
         description:
           '보내기 전에 다른 화면으로 이동하면 입력 중인 내용이 저장되지 않고 사라집니다. 그래도 이동할까요?',
       });
@@ -702,13 +702,11 @@ export default function App() {
                       앞으로 진행할 활동 한눈에 보기
                     </p>
                     <ol className="space-y-2.5 text-sm text-slate-700">
-                      <li className="flex items-start gap-2.5">
-                        <span className="font-semibold text-emerald-800 tabular-nums">
-                          1차시.
-                        </span>
+                      <li className="flex items-start gap-2.5 text-slate-500">
+                        <span className="font-semibold tabular-nums">1차시.</span>
                         <span>
-                          학교 공간에서 에너지 낭비 장면 찾고 사진·관찰 일지
-                          작성하기
+                          학교 공간 걸으며 에너지 낭비 현장 관찰·사진 촬영,
+                          피지컬 컴퓨팅 교구 기초 조작 (교실 활동)
                         </span>
                       </li>
                       <li className="flex items-start gap-2.5">
@@ -716,17 +714,27 @@ export default function App() {
                           2차시.
                         </span>
                         <span>
-                          모둠별 결과 모아보고 우리 모둠 최종 프로젝트 주제
-                          선정하기
+                          개인 관찰 일지로 내가 발견한 문제 상황 정의하기
                         </span>
-                      </li>
-                      <li className="flex items-start gap-2.5 text-slate-500">
-                        <span className="font-semibold tabular-nums">3~4차시.</span>
-                        <span>피지컬 컴퓨팅 회로 구성과 AI 협업 블록 코딩 (교구 활동)</span>
                       </li>
                       <li className="flex items-start gap-2.5">
                         <span className="font-semibold text-emerald-800 tabular-nums">
-                          5차시.
+                          3~4차시.
+                        </span>
+                        <span>
+                          모둠별 프로젝트 주제 선정하고 순서도 설계·업로드하기
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5 text-slate-500">
+                        <span className="font-semibold tabular-nums">5~6차시.</span>
+                        <span>
+                          피지컬 컴퓨팅 회로 구성, AI 협업 블록 코딩·디버깅으로
+                          프로토타입 만들기 (교구 활동)
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="font-semibold text-emerald-800 tabular-nums">
+                          7차시.
                         </span>
                         <span>
                           우리 모둠 기기 가상 조감도 프롬프트 만들어 제출하기
@@ -734,7 +742,7 @@ export default function App() {
                       </li>
                       <li className="flex items-start gap-2.5">
                         <span className="font-semibold text-emerald-800 tabular-nums">
-                          6차시.
+                          8차시.
                         </span>
                         <span>
                           AI 조감도 확인하고 판단하기 · 수정 요청과 발표 준비
@@ -927,7 +935,7 @@ export default function App() {
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <span>
-            피지컬 컴퓨팅으로 만드는 우리 학교 에너지 지킴이 · 1·2·5·6차시 활동
+            피지컬 컴퓨팅으로 만드는 우리 학교 에너지 지킴이 · 2~8차시 활동
           </span>
           {activeView === 'teacher' ? (
             <button
