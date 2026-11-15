@@ -36,8 +36,9 @@ import {
   type ApiTeacherLoginResult,
 } from '../lib/observationApi';
 import { StorageStatusNotice } from './StorageStatusNotice';
+import { TeacherBirdseyePanel } from './TeacherBirdseyePanel';
 
-export type TeacherStageTab = 'lesson1' | 'lesson2' | 'codes';
+export type TeacherStageTab = 'lesson1' | 'lesson2' | 'birdseye' | 'codes';
 
 interface TeacherReviewViewProps {
   observations: ObservationRecord[];
@@ -878,6 +879,18 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
             </button>
             <button
               type="button"
+              onClick={() => setStageTab('birdseye')}
+              className={`inline-flex min-h-[40px] items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                stageTab === 'birdseye'
+                  ? 'bg-white text-emerald-800 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>5·6차시 · 가상 조감도</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setStageTab('codes')}
               className={`inline-flex min-h-[40px] items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors whitespace-nowrap shrink-0 tabular-nums ${
                 stageTab === 'codes'
@@ -944,7 +957,7 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
         </div>
 
         {/* 학급/모둠/공간/검색 필터 (1·2차시 결과 조회 탭일 때 표시) */}
-        {stageTab !== 'codes' && (
+        {(stageTab === 'lesson1' || stageTab === 'lesson2') && (
           <div className="flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <label className="sr-only" htmlFor="teacher-class-filter">
@@ -1610,6 +1623,20 @@ export const TeacherReviewView: React.FC<TeacherReviewViewProps> = ({
         ))}
 
       {/* 탭 3: 모둠별 인증코드 직접 만들기 / 관리 */}
+      {stageTab === 'birdseye' &&
+        (storageStatus === 'connected' && isTeacherAuthenticated ? (
+          <TeacherBirdseyePanel />
+        ) : (
+          <div className="rounded-xl border border-slate-200 bg-white px-5 py-10 text-center text-sm text-slate-600">
+            <p className="font-semibold text-slate-900">
+              가상 조감도는 서버 연결 후 교사 로그인 상태에서 관리할 수 있어요
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Cloudflare에 배포된 주소에서 교사 비밀번호로 로그인해 주세요.
+            </p>
+          </div>
+        ))}
+
       {stageTab === 'codes' && (
         <div className="grid gap-6 lg:grid-cols-12 lg:items-start">
           <section

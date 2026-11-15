@@ -9,6 +9,8 @@ import {
 } from './components/LessonGuidePanel';
 import { StudentObservationForm } from './components/StudentObservationForm';
 import { GroupTopicSelectionView } from './components/GroupTopicSelectionView';
+import { Lesson5BirdseyePromptView } from './components/Lesson5BirdseyePromptView';
+import { Lesson6BirdseyeReviewView } from './components/Lesson6BirdseyeReviewView';
 import {
   TeacherReviewView,
   type TeacherStageTab,
@@ -81,6 +83,8 @@ export default function App() {
   const [isRefreshingData, setIsRefreshingData] = useState(false);
   const [lesson1Dirty, setLesson1Dirty] = useState(false);
   const [lesson2Dirty, setLesson2Dirty] = useState(false);
+  const [lesson5Dirty, setLesson5Dirty] = useState(false);
+  const [lesson6Dirty, setLesson6Dirty] = useState(false);
   const [pendingNav, setPendingNav] = useState<{
     targetView: AppView;
     teacherTab: TeacherStageTab;
@@ -548,6 +552,8 @@ export default function App() {
       setPendingNav(null);
       setLesson1Dirty(false);
       setLesson2Dirty(false);
+      setLesson5Dirty(false);
+      setLesson6Dirty(false);
       setActiveView(view);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
@@ -594,18 +600,35 @@ export default function App() {
       return;
     }
 
+    if (
+      (activeView === 'lesson5' && lesson5Dirty) ||
+      (activeView === 'lesson6' && lesson6Dirty)
+    ) {
+      const isLesson5 = activeView === 'lesson5';
+      setPendingNav({
+        targetView,
+        teacherTab,
+        title: isLesson5
+          ? '수정한 5차시 프롬프트를 아직 제출하지 않았습니다'
+          : '6차시 평가·성찰 내용을 아직 보내지 않았습니다',
+        description:
+          '보내기 전에 다른 화면으로 이동하면 입력 중인 내용이 저장되지 않고 사라집니다. 그래도 이동할까요?',
+      });
+      return;
+    }
+
     performNavigate(targetView, teacherTab);
   };
 
   useEffect(() => {
-    if (!lesson1Dirty && !lesson2Dirty) return;
+    if (!lesson1Dirty && !lesson2Dirty && !lesson5Dirty && !lesson6Dirty) return;
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [lesson1Dirty, lesson2Dirty]);
+  }, [lesson1Dirty, lesson2Dirty, lesson5Dirty, lesson6Dirty]);
 
   useEffect(() => {
     if (!pendingNav) return;
@@ -697,6 +720,26 @@ export default function App() {
                           선정하기
                         </span>
                       </li>
+                      <li className="flex items-start gap-2.5 text-slate-500">
+                        <span className="font-semibold tabular-nums">3~4차시.</span>
+                        <span>피지컬 컴퓨팅 회로 구성과 AI 협업 블록 코딩 (교구 활동)</span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="font-semibold text-emerald-800 tabular-nums">
+                          5차시.
+                        </span>
+                        <span>
+                          우리 모둠 기기 가상 조감도 프롬프트 만들어 제출하기
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <span className="font-semibold text-emerald-800 tabular-nums">
+                          6차시.
+                        </span>
+                        <span>
+                          AI 조감도 확인하고 판단하기 · 수정 요청과 발표 준비
+                        </span>
+                      </li>
                     </ol>
                   </div>
 
@@ -759,6 +802,27 @@ export default function App() {
             onTopicSubmitted={handleTopicSubmitted}
             onDeletePreviewTopic={handleDeletePreviewTopic}
             onDirtyChange={setLesson2Dirty}
+          />
+        )}
+
+        {activeView === 'lesson5' && (
+          <Lesson5BirdseyePromptView
+            storageStatus={storageStatus}
+            statusDetail={apiStatusDetail}
+            isCheckingStorage={isCheckingStorage}
+            onRetryConnection={checkStorageAndLoad}
+            onGoToLesson6={() => requestNavigate('lesson6')}
+            onDirtyChange={setLesson5Dirty}
+          />
+        )}
+
+        {activeView === 'lesson6' && (
+          <Lesson6BirdseyeReviewView
+            storageStatus={storageStatus}
+            statusDetail={apiStatusDetail}
+            isCheckingStorage={isCheckingStorage}
+            onRetryConnection={checkStorageAndLoad}
+            onDirtyChange={setLesson6Dirty}
           />
         )}
 
@@ -863,7 +927,7 @@ export default function App() {
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <span>
-            피지컬 컴퓨팅으로 만드는 우리 학교 에너지 지킴이 · 1·2차시 활동
+            피지컬 컴퓨팅으로 만드는 우리 학교 에너지 지킴이 · 1·2·5·6차시 활동
           </span>
           {activeView === 'teacher' ? (
             <button

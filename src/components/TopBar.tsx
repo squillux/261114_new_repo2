@@ -1,6 +1,12 @@
 import React from 'react';
 
-export type AppView = 'lesson0' | 'lesson1' | 'lesson2' | 'teacher';
+export type AppView =
+  | 'lesson0'
+  | 'lesson1'
+  | 'lesson2'
+  | 'lesson5'
+  | 'lesson6'
+  | 'teacher';
 
 interface TopBarProps {
   activeView: AppView;
@@ -9,6 +15,13 @@ interface TopBarProps {
   topicCount: number;
   showCounts?: boolean;
 }
+
+const LESSON_NAV: { view: AppView; label: string; short: string }[] = [
+  { view: 'lesson1', label: '1차시 · 개인 관찰 일지', short: '1차시 관찰' },
+  { view: 'lesson2', label: '2차시 · 모둠별 프로젝트 주제 선정', short: '2차시 주제' },
+  { view: 'lesson5', label: '5차시 · 조감도 프롬프트', short: '5차시 프롬프트' },
+  { view: 'lesson6', label: '6차시 · 조감도 판단', short: '6차시 조감도' },
+];
 
 export const TopBar: React.FC<TopBarProps> = ({
   activeView,
@@ -32,31 +45,23 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         <nav
           aria-label="수업 단계 이동"
-          className="hidden md:flex flex-wrap items-center gap-x-6 gap-y-1 text-sm font-medium text-slate-600"
+          className="hidden md:flex flex-wrap items-center gap-x-5 gap-y-1 text-sm font-medium text-slate-600"
         >
-          <button
-            type="button"
-            onClick={() => onSelectView('lesson1')}
-            className={`py-1.5 border-b-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
-              activeView === 'lesson1'
-                ? 'border-emerald-700 text-emerald-800 font-semibold'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            1차시 · 개인 관찰 일지
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectView('lesson2')}
-            className={`py-1.5 border-b-2 transition-colors tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
-              activeView === 'lesson2'
-                ? 'border-emerald-700 text-emerald-800 font-semibold'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            2차시 · 모둠별 프로젝트 주제 선정
-            {showCounts ? ` (${topicCount})` : ''}
-          </button>
+          {LESSON_NAV.map((item) => (
+            <button
+              key={item.view}
+              type="button"
+              onClick={() => onSelectView(item.view)}
+              className={`py-1.5 border-b-2 transition-colors tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 ${
+                activeView === item.view
+                  ? 'border-emerald-700 text-emerald-800 font-semibold'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {item.label}
+              {item.view === 'lesson2' && showCounts ? ` (${topicCount})` : ''}
+            </button>
+          ))}
           {isTeacherMode && (
             <span className="py-1.5 border-b-2 border-emerald-700 text-emerald-800 font-semibold tabular-nums">
               교사 확인{showCounts ? ` (${observationCount + topicCount})` : ''}
@@ -74,7 +79,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               학생 활동 화면
             </button>
           ) : (
-            <span className="hidden lg:inline-block text-xs font-medium text-slate-500">
+            <span className="hidden xl:inline-block text-xs font-medium text-slate-500">
               중학교 1학년 · 읽걷쓰AI 프로젝트
             </span>
           )}
@@ -83,33 +88,21 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Mobile navigation strip with >=44px touch targets */}
       <div className="border-t border-slate-100 bg-slate-50/70 px-3 py-2 md:hidden">
-        <div
-          className={`grid gap-1.5 ${
-            isTeacherMode ? 'grid-cols-3' : 'grid-cols-2'
-          }`}
-        >
-          <button
-            type="button"
-            onClick={() => onSelectView('lesson1')}
-            className={`min-h-[44px] rounded-lg px-2 py-1.5 text-center text-xs font-semibold leading-snug ${
-              activeView === 'lesson1'
-                ? 'bg-white text-emerald-800 shadow-xs ring-1 ring-slate-200'
-                : 'text-slate-700 hover:bg-white'
-            }`}
-          >
-            1차시 관찰
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectView('lesson2')}
-            className={`min-h-[44px] rounded-lg px-2 py-1.5 text-center text-xs font-semibold leading-snug ${
-              activeView === 'lesson2'
-                ? 'bg-white text-emerald-800 shadow-xs ring-1 ring-slate-200'
-                : 'text-slate-700 hover:bg-white'
-            }`}
-          >
-            2차시 주제 선정
-          </button>
+        <div className={`grid gap-1.5 ${isTeacherMode ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          {LESSON_NAV.map((item) => (
+            <button
+              key={item.view}
+              type="button"
+              onClick={() => onSelectView(item.view)}
+              className={`min-h-[44px] rounded-lg px-2 py-1.5 text-center text-xs font-semibold leading-snug ${
+                activeView === item.view
+                  ? 'bg-white text-emerald-800 shadow-xs ring-1 ring-slate-200'
+                  : 'text-slate-700 hover:bg-white'
+              }`}
+            >
+              {item.short}
+            </button>
+          ))}
           {isTeacherMode && (
             <button
               type="button"
@@ -124,4 +117,3 @@ export const TopBar: React.FC<TopBarProps> = ({
     </header>
   );
 };
-
